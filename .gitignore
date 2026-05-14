@@ -1,0 +1,23 @@
+# Build outputs
+bin/
+obj/
+release/
+
+# Visual Studio / local IDE state
+.vs/
+*.user
+*.suo
+
+# Agent/codemap metadata
+.slim/
+codemap.md
+**/codemap.md
+AGENTS.md
+
+# Markdown notes/docs generated during agent work
+*.md
+!README.md
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
