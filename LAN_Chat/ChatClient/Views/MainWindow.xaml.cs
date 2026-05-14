@@ -10,6 +10,13 @@ namespace ChatClient;
 public partial class MainWindow : Window
 {
     private readonly NetworkService _networkService = new();
+    private readonly string[] _emojiIcons =
+    [
+        "😀", "😄", "😂", "🥰", "😍", "😎", "🤔", "😭", "😡", "👍",
+        "👏", "🙏", "💪", "🔥", "✨", "🎉", "❤️", "💛", "💚", "💙",
+        "⭐", "✅", "❌", "📌", "💬", "☕", "🍕", "🎮", "🚀", "🏆"
+    ];
+
     private string _username = string.Empty;
 
     public MainWindow()
@@ -18,6 +25,7 @@ public partial class MainWindow : Window
 
         Messages = new ObservableCollection<DisplayMessage>();
         DataContext = this;
+        EmojiItemsControl.ItemsSource = _emojiIcons;
         _networkService.MessageReceived += OnMessageReceived;
     }
 
@@ -60,6 +68,25 @@ public partial class MainWindow : Window
     private async void SendButton_Click(object sender, RoutedEventArgs e)
     {
         await SendCurrentMessageAsync();
+    }
+
+    private void EmojiButton_Click(object sender, RoutedEventArgs e)
+    {
+        EmojiPopup.IsOpen = !EmojiPopup.IsOpen;
+    }
+
+    private void EmojiItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { Content: string emoji })
+        {
+            return;
+        }
+
+        int caretIndex = MessageInputTextBox.CaretIndex;
+        MessageInputTextBox.Text = MessageInputTextBox.Text.Insert(caretIndex, emoji);
+        MessageInputTextBox.CaretIndex = caretIndex + emoji.Length;
+        MessageInputTextBox.Focus();
+        EmojiPopup.IsOpen = false;
     }
 
     private async void MessageInputTextBox_KeyDown(object sender, KeyEventArgs e)
