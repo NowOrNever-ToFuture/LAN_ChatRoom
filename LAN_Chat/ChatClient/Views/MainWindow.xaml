@@ -1,30 +1,158 @@
-﻿<Window x:Class="ChatClient.MainWindow"
+<Window x:Class="ChatClient.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:emoji="clr-namespace:Emoji.Wpf;assembly=Emoji.Wpf"
+        xmlns:converters="clr-namespace:ChatClient.Converters"
         mc:Ignorable="d"
-        Title="LAN Chat Room" Height="700" Width="980" MinHeight="580" MinWidth="820"
-        Background="#FFEAF0F4" FontFamily="Segoe UI Emoji">
+        Title="LAN Chat Room" Height="700" Width="1080" MinHeight="580" MinWidth="900"
+        Background="#FFEAF0F4" FontFamily="Segoe UI">
     <Window.Resources>
+        <!-- ── Material Design Icon Geometries ── -->
+        <Geometry x:Key="EmojiIcon">M11.99,2C6.47,2,2,6.48,2,12s4.47,10,9.99,10C17.52,22,22,17.52,22,12S17.52,2,11.99,2zM12,20c-4.42,0-8-3.58-8-8s3.58-8,8-8 8,3.58,8,8-3.58,8-8,8zM15.5,11c0.83,0,1.5-0.67,1.5-1.5S16.33,8,15.5,8 14,8.67,14,9.5s0.67,1.5,1.5,1.5zM8.5,11c0.83,0,1.5-0.67,1.5-1.5S9.33,8,8.5,8 7,8.67,7,9.5 7.67,11,8.5,11zM12,17.5c2.33,0,4.31-1.46,5.11-3.5H6.89C7.69,16.04,9.67,17.5,12,17.5z</Geometry>
+        <Geometry x:Key="ImageIcon">M21,19V5c0-1.1-0.9-2-2-2H5c-1.1,0-2,0.9-2,2v14c0,1.1,0.9,2,2,2h14C20.1,21,21,20.1,21,19zM8.5,13.5l2.5,3.01L14.5,12l4.5,6H5L8.5,13.5z</Geometry>
+        <Geometry x:Key="AttachIcon">M16.5,6v11.5c0,2.21-1.79,4-4,4s-4-1.79-4-4V5c0-1.38,1.12-2.5,2.5-2.5s2.5,1.12,2.5,2.5v10.5c0,0.55-0.45,1-1,1s-1-0.45-1-1V6H10v9.5c0,1.38,1.12,2.5,2.5,2.5s2.5-1.12,2.5-2.5V5c0-2.21-1.79-4-4-4S7,2.79,7,5v12.5c0,3.04,2.46,5.5,5.5,5.5s5.5-2.46,5.5-5.5V6H16.5z</Geometry>
+        <Geometry x:Key="SendIcon">M2.01,21L23,12L2.01,3L2,10l15,2L2,14L2.01,21z</Geometry>
+        <Geometry x:Key="PersonIcon">M12,12c2.21,0,4-1.79,4-4s-1.79-4-4-4-4,1.79-4,4,1.79,4,4,4zM12,14c-2.67,0-8,1.34-8,4v2h16v-2c0-2.66-5.33-4-8-4z</Geometry>
+
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+
+        <!-- ── Rounded TextBox Style ── -->
+        <Style x:Key="RoundedTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#FFE2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10"
+                                Padding="{TemplateBinding Padding}">
+                            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ── Primary Button (rounded) ── -->
         <Style x:Key="PrimaryButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#FF0F766E"/>
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#FF0F766E"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="14,8"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="10" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
+        <!-- ── Icon Button (rounded) ── -->
         <Style x:Key="IconButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#FFFFF7ED"/>
             <Setter Property="BorderBrush" Value="#FFF59E0B"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="8,4"/>
-            <Setter Property="FontSize" Value="18"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="10" Padding="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
+
+        <!-- ── Text message template ── -->
+        <DataTemplate x:Key="TextMessageTemplate">
+            <Border Padding="10" Margin="0,4" CornerRadius="14" Background="#FFF8FAFC" BorderBrush="#FFE2E8F0" BorderThickness="1">
+                <emoji:TextBlock TextWrapping="Wrap" FontSize="14">
+                    <Run Text="[" Foreground="#FF94A3B8"/>
+                    <Run Text="{Binding TimestampText, Mode=OneWay}" Foreground="#FF94A3B8"/>
+                    <Run Text="] " Foreground="#FF94A3B8"/>
+                    <Run Text="{Binding SenderDisplayName, Mode=OneWay}" FontWeight="Bold" Foreground="#FF0F766E"/>
+                    <Run Text=": "/>
+                    <Run Text="{Binding Content}"/>
+                </emoji:TextBlock>
+            </Border>
+        </DataTemplate>
+
+        <!-- ── System message template ── -->
+        <DataTemplate x:Key="SystemMessageTemplate">
+            <Border Padding="8" Margin="0,4" CornerRadius="14" Background="#FFF0FDF4" BorderBrush="#FFBBF7D0" BorderThickness="1">
+                <emoji:TextBlock TextWrapping="Wrap" FontSize="13" FontStyle="Italic" Foreground="#FF15803D" HorizontalAlignment="Center">
+                    <Run Text="{Binding Content}"/>
+                </emoji:TextBlock>
+            </Border>
+        </DataTemplate>
+
+        <!-- ── Image message template ── -->
+        <DataTemplate x:Key="ImageMessageTemplate">
+            <Border Padding="10" Margin="0,4" CornerRadius="14" Background="#FFF8FAFC" BorderBrush="#FFE2E8F0" BorderThickness="1">
+                <StackPanel>
+                    <emoji:TextBlock FontSize="14" Margin="0,0,0,6">
+                        <Run Text="[" Foreground="#FF94A3B8"/>
+                        <Run Text="{Binding TimestampText, Mode=OneWay}" Foreground="#FF94A3B8"/>
+                        <Run Text="] " Foreground="#FF94A3B8"/>
+                        <Run Text="{Binding SenderDisplayName, Mode=OneWay}" FontWeight="Bold" Foreground="#FF0F766E"/>
+                        <Run Text=" sent an image"/>
+                    </emoji:TextBlock>
+                    <Image Source="{Binding ImageThumbnail}" MaxWidth="300" MaxHeight="300" HorizontalAlignment="Left"
+                           Cursor="Hand" MouseLeftButtonDown="ImageThumbnail_Click" Margin="0,4"/>
+                    <ProgressBar Value="{Binding TransferProgress}" Maximum="100" Height="4" Margin="0,4,0,0"
+                                 Visibility="{Binding IsTransferring, Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- ── File message template ── -->
+        <DataTemplate x:Key="FileMessageTemplate">
+            <Border Padding="10" Margin="0,4" CornerRadius="14" Background="#FFFFF7ED" BorderBrush="#FFFDE68A" BorderThickness="1">
+                <StackPanel>
+                    <emoji:TextBlock FontSize="14">
+                        <Run Text="[" Foreground="#FF94A3B8"/>
+                        <Run Text="{Binding TimestampText, Mode=OneWay}" Foreground="#FF94A3B8"/>
+                        <Run Text="] " Foreground="#FF94A3B8"/>
+                        <Run Text="{Binding SenderDisplayName, Mode=OneWay}" FontWeight="Bold" Foreground="#FF0F766E"/>
+                        <Run Text=" shared a file"/>
+                    </emoji:TextBlock>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <Path Data="{StaticResource AttachIcon}" Fill="#FF64748B" Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{Binding FileInfo.FileName}" FontWeight="SemiBold" FontSize="13" Foreground="#FF1E293B"/>
+                            <TextBlock Text="{Binding FileSizeText}" FontSize="11" Foreground="#FF64748B"/>
+                        </StackPanel>
+                        <Button Content="Save" Margin="14,0,0,0" Padding="10,4" Cursor="Hand"
+                                Click="SaveFileButton_Click" Tag="{Binding}" Style="{StaticResource PrimaryButtonStyle}"
+                                Visibility="{Binding IsCompleted, Converter={StaticResource BoolToVisibility}}"/>
+                    </StackPanel>
+                    <ProgressBar Value="{Binding TransferProgress}" Maximum="100" Height="4" Margin="0,6,0,0"
+                                 Visibility="{Binding IsTransferring, Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+
+
+        <converters:MessageTemplateSelector x:Key="MessageTemplateSelector"
+            TextMessageTemplate="{StaticResource TextMessageTemplate}"
+            ImageMessageTemplate="{StaticResource ImageMessageTemplate}"
+            FileMessageTemplate="{StaticResource FileMessageTemplate}"
+            SystemMessageTemplate="{StaticResource SystemMessageTemplate}"/>
     </Window.Resources>
 
     <Grid>
@@ -38,107 +166,193 @@
 
         <Border Margin="22" Padding="18" CornerRadius="24" Background="#F7FFFFFF" BorderBrush="#CCE2E8F0" BorderThickness="1">
             <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="200"/>
+                    <ColumnDefinition Width="14"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
 
-                <Grid Grid.Row="0" Margin="0,0,0,18">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <Border Width="58" Height="58" CornerRadius="18" Background="#FF102A43" Margin="0,0,14,0">
-                        <Image Source="{StaticResource AppIcon}" Width="42" Height="42"/>
-                    </Border>
-
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Text="Chat Room" FontSize="26" FontWeight="Bold" Foreground="#FF102A43"/>
-                        <TextBlock Text="Chat nội bộ " FontSize="13" Foreground="#FF62748A"/>
-                    </StackPanel>
-
-                    <Border Grid.Column="2" Padding="12,7" CornerRadius="16" Background="#FFFFF1F2" VerticalAlignment="Center">
-                        <TextBlock x:Name="StatusTextBlock" Text="Offline" Foreground="#FFBE123C" FontWeight="Bold"/>
-                    </Border>
-                </Grid>
-
-                <Border Grid.Row="1" Padding="14" CornerRadius="18" Background="#FFFFFFFF" BorderBrush="#FFE2E8F0" BorderThickness="1" Margin="0,0,0,14">
+                <!-- ══════════════════════════════════════════ -->
+                <!-- LEFT SIDEBAR — Online Users                -->
+                <!-- ══════════════════════════════════════════ -->
+                <Border Grid.Column="0" CornerRadius="18" Background="#FFF8FAFC" BorderBrush="#FFE2E8F0" BorderThickness="1" Padding="12">
                     <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Sidebar header -->
+                        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                <Ellipse Width="10" Height="10" Fill="#FF22C55E" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Online" FontSize="16" FontWeight="Bold" Foreground="#FF102A43"/>
+                            </StackPanel>
+                            <TextBlock x:Name="OnlineCountText" Text="0 users" FontSize="12" Foreground="#FF94A3B8" Margin="18,0,0,0"/>
+                        </StackPanel>
+
+                        <!-- User list -->
+                        <ListBox x:Name="OnlineUsersListBox" Grid.Row="1"
+                                 ItemsSource="{Binding OnlineUsers}"
+                                 BorderThickness="0" Background="Transparent"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,4" HorizontalAlignment="Center" Width="150">
+                                        <Border HorizontalAlignment="Center" Width="48" Height="48" CornerRadius="24" Margin="0,0,0,4">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                    <GradientStop Color="#FF0F766E" Offset="0"/>
+                                                    <GradientStop Color="#FF2DD4BF" Offset="1"/>
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                            <TextBlock Text="{Binding Initial}" FontSize="20" FontWeight="Bold"
+                                                       Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="#FF334155" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+
+                <!-- ══════════════════════════════════════════ -->
+                <!-- RIGHT CONTENT — Chat Area                  -->
+                <!-- ══════════════════════════════════════════ -->
+                <Grid Grid.Column="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <Grid Grid.Row="0" Margin="0,0,0,18">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="170"/>
-                            <ColumnDefinition Width="14"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="190"/>
-                            <ColumnDefinition Width="14"/>
-                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Column="0" Text="Server IP" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold" Foreground="#FF334155"/>
-                        <TextBox x:Name="ServerIpTextBox" Grid.Column="1" Height="36" Padding="10,0" VerticalContentAlignment="Center" Text="127.0.0.1"/>
+                        <Border Width="58" Height="58" CornerRadius="18" Background="#FF102A43" Margin="0,0,14,0">
+                            <Image Source="{StaticResource AppIcon}" Width="42" Height="42"/>
+                        </Border>
 
-                        <TextBlock Grid.Column="3" Text="Username" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold" Foreground="#FF334155"/>
-                        <TextBox x:Name="UsernameTextBox" Grid.Column="4" Height="36" Padding="10,0" VerticalContentAlignment="Center"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Chat Room" FontSize="26" FontWeight="Bold" Foreground="#FF102A43"/>
+                            <TextBlock Text="Chat nội bộ" FontSize="13" Foreground="#FF62748A"/>
+                        </StackPanel>
 
-                        <Button x:Name="ConnectButton" Grid.Column="6" Height="36" MinWidth="110" Content="Connect" Style="{StaticResource PrimaryButtonStyle}" Click="ConnectButton_Click"/>
+                        <Border Grid.Column="2" Padding="12,7" CornerRadius="16" Background="#FFFFF1F2" VerticalAlignment="Center">
+                            <TextBlock x:Name="StatusTextBlock" Text="Offline" Foreground="#FFBE123C" FontWeight="Bold"/>
+                        </Border>
                     </Grid>
-                </Border>
 
-                <Border Grid.Row="2" Padding="12" CornerRadius="20" Background="#FFFFFFFF" BorderBrush="#FFE2E8F0" BorderThickness="1">
-                    <ListBox x:Name="MessagesListBox" ItemsSource="{Binding Messages}" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Padding="10" Margin="0,4" CornerRadius="14" Background="#FFF8FAFC" BorderBrush="#FFE2E8F0" BorderThickness="1">
-                                    <TextBlock TextWrapping="Wrap" FontSize="14">
-                                        <Run Text="[" Foreground="#FF94A3B8"/>
-                                        <Run Text="{Binding TimestampText, Mode=OneWay}" Foreground="#FF94A3B8"/>
-                                        <Run Text="] " Foreground="#FF94A3B8"/>
-                                        <Run Text="{Binding SenderDisplayName, Mode=OneWay}" FontWeight="Bold" Foreground="#FF0F766E"/>
-                                        <Run Text=": "/>
-                                        <Run Text="{Binding Content}"/>
-                                    </TextBlock>
+                    <!-- Connection bar -->
+                    <Border Grid.Row="1" Padding="14" CornerRadius="18" Background="#FFFFFFFF" BorderBrush="#FFE2E8F0" BorderThickness="1" Margin="0,0,0,14">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="170"/>
+                                <ColumnDefinition Width="14"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="190"/>
+                                <ColumnDefinition Width="14"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0" Text="Server IP" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold" Foreground="#FF334155"/>
+                            <TextBox x:Name="ServerIpTextBox" Grid.Column="1" Height="36" Text="127.0.0.1" Style="{StaticResource RoundedTextBoxStyle}"/>
+
+                            <TextBlock Grid.Column="3" Text="Username" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold" Foreground="#FF334155"/>
+                            <TextBox x:Name="UsernameTextBox" Grid.Column="4" Height="36" Style="{StaticResource RoundedTextBoxStyle}"/>
+
+                            <Button x:Name="ConnectButton" Grid.Column="6" Height="36" MinWidth="110" Content="Connect" Style="{StaticResource PrimaryButtonStyle}" Click="ConnectButton_Click"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Messages area -->
+                    <Border Grid.Row="2" Padding="12" CornerRadius="20" Background="#FFFFFFFF" BorderBrush="#FFE2E8F0" BorderThickness="1">
+                        <ListBox x:Name="MessagesListBox" ItemsSource="{Binding Messages}" BorderThickness="0" Background="Transparent"
+                                 HorizontalContentAlignment="Stretch"
+                                 ItemTemplateSelector="{StaticResource MessageTemplateSelector}"/>
+                    </Border>
+
+                    <!-- Input bar -->
+                    <Grid Grid.Row="3" Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Emoji button + popup grid -->
+                        <Grid Grid.Column="0">
+                            <Button x:Name="EmojiButton" Width="46" Height="42" Style="{StaticResource IconButtonStyle}" Click="EmojiButton_Click">
+                                <Path Data="{StaticResource EmojiIcon}" Fill="#FFF59E0B" Width="22" Height="22" Stretch="Uniform"/>
+                            </Button>
+                            <Popup x:Name="EmojiPopup" PlacementTarget="{Binding ElementName=EmojiButton}" Placement="Top" StaysOpen="False" AllowsTransparency="True">
+                                <Border Padding="12" CornerRadius="18" Background="White" BorderBrush="#FFE2E8F0" BorderThickness="1">
+                                    <ScrollViewer MaxHeight="280" VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl x:Name="EmojiItemsControl">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel Width="310"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Width="42" Height="42" Margin="2" Cursor="Hand" Click="EmojiItem_Click" Tag="{Binding}"
+                                                            Background="Transparent" BorderThickness="0">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="2">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                        <emoji:TextBlock Text="{Binding}" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
                                 </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </Border>
+                            </Popup>
+                        </Grid>
 
-                <Grid Grid.Row="3" Margin="0,14,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="10"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="10"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
+                        <!-- Image button with Material icon -->
+                        <Button Grid.Column="2" x:Name="ImageButton" Width="46" Height="42" Style="{StaticResource IconButtonStyle}" Click="ImageButton_Click">
+                            <Path Data="{StaticResource ImageIcon}" Fill="#FFF59E0B" Width="22" Height="22" Stretch="Uniform"/>
+                        </Button>
 
-                    <Grid Grid.Column="0">
-                        <Button x:Name="EmojiButton" Width="46" Height="42" Content="😀" Style="{StaticResource IconButtonStyle}" Click="EmojiButton_Click"/>
-                        <Popup x:Name="EmojiPopup" PlacementTarget="{Binding ElementName=EmojiButton}" Placement="Top" StaysOpen="False" AllowsTransparency="True">
-                            <Border Padding="12" CornerRadius="18" Background="White" BorderBrush="#FFE2E8F0" BorderThickness="1">
-                                <ItemsControl x:Name="EmojiItemsControl">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <WrapPanel Width="280"/>
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Button Content="{Binding}" Width="38" Height="38" FontSize="20" Margin="3" Click="EmojiItem_Click"/>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </Border>
-                        </Popup>
+                        <!-- File attach button with Material icon -->
+                        <Button Grid.Column="4" x:Name="AttachButton" Width="46" Height="42" Style="{StaticResource IconButtonStyle}" Click="AttachButton_Click">
+                            <Path Data="{StaticResource AttachIcon}" Fill="#FFF59E0B" Width="22" Height="22" Stretch="Uniform"/>
+                        </Button>
+
+                        <!-- Message input (rounded) -->
+                        <TextBox x:Name="MessageInputTextBox" Grid.Column="6" Height="42" FontSize="14"
+                                 Style="{StaticResource RoundedTextBoxStyle}" KeyDown="MessageInputTextBox_KeyDown"/>
+
+                        <!-- Send button with Material icon -->
+                        <Button x:Name="SendButton" Grid.Column="8" Height="42" MinWidth="100" Style="{StaticResource PrimaryButtonStyle}" Click="SendButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Data="{StaticResource SendIcon}" Fill="White" Width="18" Height="18" Stretch="Uniform" Margin="0,0,6,0"/>
+                                <TextBlock Text="Send" Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                     </Grid>
-
-                    <TextBox x:Name="MessageInputTextBox" Grid.Column="2" Height="42" Padding="12,0" VerticalContentAlignment="Center" FontSize="14" KeyDown="MessageInputTextBox_KeyDown"/>
-                    <Button x:Name="SendButton" Grid.Column="4" Height="42" MinWidth="112" Content="Send" Style="{StaticResource PrimaryButtonStyle}" Click="SendButton_Click"/>
                 </Grid>
             </Grid>
         </Border>

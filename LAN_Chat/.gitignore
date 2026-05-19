@@ -14,8 +14,13 @@ codemap.md
 **/codemap.md
 AGENTS.md
 
-# Markdown notes/docs generated during agent work
-*.md
+# AI Agent generated plans and artifacts
+implementation_plan.md
+task.md
+walkthrough.md
+
+# Server runtime logs
+server.log
 
 # OS/editor noise
 .DS_Store

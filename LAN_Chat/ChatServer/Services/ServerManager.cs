@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -15,16 +15,18 @@ public class ServerManager
     private readonly Queue<string> _messageCache = new();
     private readonly SemaphoreSlim _clientLock = new(1, 1);
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
+    private readonly ServerLogger _logger;
 
-    public ServerManager()
+    public ServerManager(ServerLogger logger)
     {
+        _logger = logger;
         _listener = new TcpListener(IPAddress.Any, AppConstants.Port);
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         _listener.Start();
-        Console.WriteLine($"LAN Chat Server is running on port {AppConstants.Port}...");
+        _logger.LogSystem($"LAN Chat Server is running on port {AppConstants.Port}...");
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -72,16 +74,30 @@ public class ServerManager
                     continue;
                 }
 
-                ChatMessage chatMessage = new()
+                // Handle different packet types
+                if (IsSpecialCommand(senderName))
                 {
-                    SenderName = senderName,
-                    Content = content,
-                    Timestamp = DateTime.Now
-                };
+                    // Relay special commands (IMAGE, FILE, PROGRESS, COMPLETE) to all clients
+                    await AddMessageToCacheAsync(incomingPacket, cancellationToken);
+                    await BroadcastMessageAsync(incomingPacket, cancellationToken);
+                    LogSpecialCommand(senderName, content);
+                }
+                else
+                {
+                    // Regular chat message
+                    ChatMessage chatMessage = new()
+                    {
+                        SenderName = senderName,
+                        Content = content,
+                        Timestamp = DateTime.Now
+                    };
 
-                string broadcastPacket = CreatePacket(chatMessage.SenderName, chatMessage.Content);
-                await AddMessageToCacheAsync(broadcastPacket, cancellationToken);
-                await BroadcastMessageAsync(broadcastPacket, cancellationToken);
+                    string broadcastPacket = CreatePacket(chatMessage.SenderName, chatMessage.Content);
+                    await AddMessageToCacheAsync(broadcastPacket, cancellationToken);
+                    await BroadcastMessageAsync(broadcastPacket, cancellationToken);
+
+                    _logger.LogChat(chatMessage.SenderName, chatMessage.Content);
+                }
             }
         }
         catch (IOException)
@@ -95,6 +111,34 @@ public class ServerManager
         {
             await RemoveClientAsync(tcpClient, username, cancellationToken);
             tcpClient.Dispose();
+        }
+    }
+
+    private static bool IsSpecialCommand(string senderOrCommand)
+    {
+        return senderOrCommand is AppConstants.ImageCommand
+            or AppConstants.FileCommand
+            or AppConstants.ProgressCommand
+            or AppConstants.CompleteCommand
+            or AppConstants.UserListCommand;
+    }
+
+    private void LogSpecialCommand(string command, string content)
+    {
+        switch (command)
+        {
+            case AppConstants.ImageCommand:
+                _logger.LogFileTransfer($"Image transfer: {content}");
+                break;
+            case AppConstants.FileCommand:
+                _logger.LogFileTransfer($"File transfer: {content}");
+                break;
+            case AppConstants.ProgressCommand:
+                // Don't log every progress update to avoid spam
+                break;
+            case AppConstants.CompleteCommand:
+                _logger.LogFileTransfer($"Transfer complete: {content}");
+                break;
         }
     }
 
@@ -132,7 +176,8 @@ public class ServerManager
             _clientLock.Release();
         }
 
-        Console.WriteLine($"{username} connected.");
+        _logger.LogConnection($"{username} connected.");
+        await BroadcastUserListAsync(cancellationToken);
     }
 
     private async Task RemoveClientAsync(TcpClient tcpClient, string? username, CancellationToken cancellationToken, bool notifyRoom = true)
@@ -157,8 +202,9 @@ public class ServerManager
 
         if (wasConnected && notifyRoom && !string.IsNullOrWhiteSpace(removedUsername))
         {
-            Console.WriteLine($"{removedUsername} disconnected.");
+            _logger.LogConnection($"{removedUsername} disconnected.");
             await BroadcastSystemMessageAsync($"{removedUsername} đã rời phòng chat.", cancellationToken);
+            await BroadcastUserListAsync(cancellationToken);
         }
     }
 
@@ -213,6 +259,14 @@ public class ServerManager
         {
             _cacheLock.Release();
         }
+    }
+
+    private async Task BroadcastUserListAsync(CancellationToken cancellationToken)
+    {
+        List<ConnectedClient> clients = await SnapshotClientsAsync(cancellationToken);
+        string userNames = string.Join(",", clients.Select(c => c.Username));
+        string packet = CreatePacket(AppConstants.UserListCommand, userNames);
+        await BroadcastMessageAsync(packet, cancellationToken);
     }
 
     private async Task BroadcastSystemMessageAsync(string content, CancellationToken cancellationToken)

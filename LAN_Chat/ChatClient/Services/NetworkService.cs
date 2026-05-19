@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Net.Sockets;
 using System.Text;
 using Chat.Shared.Constants;
@@ -65,6 +65,15 @@ public sealed class NetworkService : IAsyncDisposable
         };
 
         string packet = $"{chatMessage.SenderName}{AppConstants.MessageSeparator}{chatMessage.Content}";
+        await WritePacketAsync(_networkStream, packet, cancellationToken);
+    }
+
+    /// <summary>
+    /// Send a pre-formatted packet string (used for IMAGE/FILE/PROGRESS/COMPLETE commands).
+    /// </summary>
+    public async Task SendRawPacketAsync(string packet, CancellationToken cancellationToken = default)
+    {
+        if (!IsConnected || _networkStream is null) return;
         await WritePacketAsync(_networkStream, packet, cancellationToken);
     }
 
