@@ -17,6 +17,8 @@
         <Geometry x:Key="PersonIcon">M12,12c2.21,0,4-1.79,4-4s-1.79-4-4-4-4,1.79-4,4,1.79,4,4,4zM12,14c-2.67,0-8,1.34-8,4v2h16v-2c0-2.66-5.33-4-8-4z</Geometry>
 
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+        <converters:BoolToAlignmentConverter x:Key="BoolToAlignment"/>
+        <converters:BoolToBrushConverter x:Key="BoolToBrush"/>
 
         <!-- ── Rounded TextBox Style ── -->
         <Style x:Key="RoundedTextBoxStyle" TargetType="TextBox">
@@ -77,9 +79,13 @@
             </Setter>
         </Style>
 
-        <!-- ── Text message template ── -->
+        <!-- ── Text message template (left/right bubble) ── -->
         <DataTemplate x:Key="TextMessageTemplate">
-            <Border Padding="10" Margin="0,4" CornerRadius="14" Background="#FFF8FAFC" BorderBrush="#FFE2E8F0" BorderThickness="1">
+            <Border Padding="10" Margin="0,4" CornerRadius="14"
+                    Background="{Binding IsOwnMessage, Converter={StaticResource BoolToBrush}}"
+                    BorderBrush="#FFE2E8F0" BorderThickness="1"
+                    HorizontalAlignment="{Binding IsOwnMessage, Converter={StaticResource BoolToAlignment}}"
+                    MaxWidth="520">
                 <emoji:TextBlock TextWrapping="Wrap" FontSize="14">
                     <Run Text="[" Foreground="#FF94A3B8"/>
                     <Run Text="{Binding TimestampText, Mode=OneWay}" Foreground="#FF94A3B8"/>
@@ -91,18 +97,23 @@
             </Border>
         </DataTemplate>
 
-        <!-- ── System message template ── -->
+        <!-- ── System message template (centered) ── -->
         <DataTemplate x:Key="SystemMessageTemplate">
-            <Border Padding="8" Margin="0,4" CornerRadius="14" Background="#FFF0FDF4" BorderBrush="#FFBBF7D0" BorderThickness="1">
+            <Border Padding="8" Margin="0,4" CornerRadius="14" Background="#FFF0FDF4" BorderBrush="#FFBBF7D0" BorderThickness="1"
+                    HorizontalAlignment="Center" MaxWidth="400">
                 <emoji:TextBlock TextWrapping="Wrap" FontSize="13" FontStyle="Italic" Foreground="#FF15803D" HorizontalAlignment="Center">
                     <Run Text="{Binding Content}"/>
                 </emoji:TextBlock>
             </Border>
         </DataTemplate>
 
-        <!-- ── Image message template ── -->
+        <!-- ── Image message template (left/right bubble) ── -->
         <DataTemplate x:Key="ImageMessageTemplate">
-            <Border Padding="10" Margin="0,4" CornerRadius="14" Background="#FFF8FAFC" BorderBrush="#FFE2E8F0" BorderThickness="1">
+            <Border Padding="10" Margin="0,4" CornerRadius="14"
+                    Background="{Binding IsOwnMessage, Converter={StaticResource BoolToBrush}}"
+                    BorderBrush="#FFE2E8F0" BorderThickness="1"
+                    HorizontalAlignment="{Binding IsOwnMessage, Converter={StaticResource BoolToAlignment}}"
+                    MaxWidth="520">
                 <StackPanel>
                     <emoji:TextBlock FontSize="14" Margin="0,0,0,6">
                         <Run Text="[" Foreground="#FF94A3B8"/>
@@ -111,17 +122,20 @@
                         <Run Text="{Binding SenderDisplayName, Mode=OneWay}" FontWeight="Bold" Foreground="#FF0F766E"/>
                         <Run Text=" sent an image"/>
                     </emoji:TextBlock>
-                    <Image Source="{Binding ImageThumbnail}" MaxWidth="300" MaxHeight="300" HorizontalAlignment="Left"
+                    <Image Source="{Binding ImageThumbnail}" MaxWidth="300" MaxHeight="300"
+                           HorizontalAlignment="{Binding IsOwnMessage, Converter={StaticResource BoolToAlignment}}"
                            Cursor="Hand" MouseLeftButtonDown="ImageThumbnail_Click" Margin="0,4"/>
-                    <ProgressBar Value="{Binding TransferProgress}" Maximum="100" Height="4" Margin="0,4,0,0"
-                                 Visibility="{Binding IsTransferring, Converter={StaticResource BoolToVisibility}}"/>
                 </StackPanel>
             </Border>
         </DataTemplate>
 
-        <!-- ── File message template ── -->
+        <!-- ── File message template (left/right bubble) ── -->
         <DataTemplate x:Key="FileMessageTemplate">
-            <Border Padding="10" Margin="0,4" CornerRadius="14" Background="#FFFFF7ED" BorderBrush="#FFFDE68A" BorderThickness="1">
+            <Border Padding="10" Margin="0,4" CornerRadius="14"
+                    Background="{Binding IsOwnMessage, Converter={StaticResource BoolToBrush}}"
+                    BorderBrush="#FFFDE68A" BorderThickness="1"
+                    HorizontalAlignment="{Binding IsOwnMessage, Converter={StaticResource BoolToAlignment}}"
+                    MaxWidth="520">
                 <StackPanel>
                     <emoji:TextBlock FontSize="14">
                         <Run Text="[" Foreground="#FF94A3B8"/>
@@ -140,13 +154,12 @@
                                 Click="SaveFileButton_Click" Tag="{Binding}" Style="{StaticResource PrimaryButtonStyle}"
                                 Visibility="{Binding IsCompleted, Converter={StaticResource BoolToVisibility}}"/>
                     </StackPanel>
+                    <!-- Progress bar only for sender (own messages) -->
                     <ProgressBar Value="{Binding TransferProgress}" Maximum="100" Height="4" Margin="0,6,0,0"
-                                 Visibility="{Binding IsTransferring, Converter={StaticResource BoolToVisibility}}"/>
+                                 Visibility="{Binding IsOwnMessage, Converter={StaticResource BoolToVisibility}}"/>
                 </StackPanel>
             </Border>
         </DataTemplate>
-
-
 
         <converters:MessageTemplateSelector x:Key="MessageTemplateSelector"
             TextMessageTemplate="{StaticResource TextMessageTemplate}"

@@ -25,4 +25,5 @@ public static class AppConstants
     // ── Image constraints ──
     public const int MaxImageDimension = 1920;
     public const int ImageQuality = 80;
+    public const int MaxBase64ImageSize = 3 * 1024 * 1024; // 3MB limit for Base64 images
 }

@@ -18,6 +18,8 @@ public partial class MainWindow : Window
     private string _username = string.Empty;
 
     private readonly Dictionary<Guid, DisplayMessage> _fileMessages = new();
+    // Pending file metadata for receivers — only shown after [COMPLETE]
+    private readonly Dictionary<Guid, (string SenderName, string FileName, long FileSize)> _pendingFileMetadata = new();
 
     private readonly string[] _emojiList =
     [
@@ -159,49 +161,35 @@ public partial class MainWindow : Window
             string fileName = Path.GetFileName(filePath);
             Guid fileId = Guid.NewGuid();
 
-            FileTransferInfo info = new()
-            {
-                FileId = fileId, FileName = fileName, FileSize = imageData.Length,
-                SenderName = _username, IsImage = true
-            };
-            info.ComputeTotalChunks(AppConstants.ChunkSize);
+            // Encode image as Base64 and send inline via chat channel
+            string base64Data = Convert.ToBase64String(imageData);
 
             string metadataPacket = $"{AppConstants.ImageCommand}{AppConstants.MessageSeparator}" +
                                     $"{_username}{AppConstants.MessageSeparator}" +
                                     $"{fileId}{AppConstants.MessageSeparator}" +
                                     $"{fileName}{AppConstants.MessageSeparator}" +
-                                    $"{imageData.Length}";
+                                    $"{imageData.Length}{AppConstants.MessageSeparator}" +
+                                    $"{base64Data}";
             await _networkService.SendRawPacketAsync(metadataPacket);
 
+            // Show thumbnail locally for the sender
             Application.Current.Dispatcher.Invoke(() =>
             {
                 var thumbnail = ImageService.CreateThumbnail(imageData);
+                FileTransferInfo info = new()
+                {
+                    FileId = fileId, FileName = fileName, FileSize = imageData.Length,
+                    SenderName = _username, IsImage = true
+                };
                 DisplayMessage msg = new(_username, $"Sent image: {fileName}", _username)
                 {
                     IsImageMessage = true, FileInfo = info, ImageThumbnail = thumbnail,
-                    TransferStatus = FileTransferStatus.Transferring
+                    TransferStatus = FileTransferStatus.Completed
                 };
                 Messages.Add(msg);
                 _fileMessages[fileId] = msg;
                 MessagesListBox.ScrollIntoView(msg);
             });
-
-            if (_fileTransferService.IsConnected)
-            {
-                string tempPath = Path.Combine(Path.GetTempPath(), $"lanchat_{fileId}{Path.GetExtension(fileName)}");
-                await File.WriteAllBytesAsync(tempPath, imageData);
-
-                Progress<double> progress = new(p =>
-                    Application.Current.Dispatcher.Invoke(() => { if (_fileMessages.TryGetValue(fileId, out var m)) m.TransferProgress = p; }));
-
-                await _fileTransferService.SendFileAsync(tempPath, fileId, progress);
-                try { File.Delete(tempPath); } catch { }
-
-                Application.Current.Dispatcher.Invoke(() =>
-                    { if (_fileMessages.TryGetValue(fileId, out var m)) m.TransferStatus = FileTransferStatus.Completed; });
-
-                await _networkService.SendRawPacketAsync($"{AppConstants.CompleteCommand}{AppConstants.MessageSeparator}{fileId}");
-            }
         }
         catch (Exception ex)
         {
@@ -342,32 +330,46 @@ public partial class MainWindow : Window
     private void HandleImageMetadata(string content)
     {
         string[] parts = content.Split(AppConstants.MessageSeparator);
-        if (parts.Length < 4) return;
+        if (parts.Length < 5) return;
 
         string senderName = parts[0];
         if (!Guid.TryParse(parts[1], out Guid fileId)) return;
         string fileName = parts[2];
         if (!long.TryParse(parts[3], out long fileSize)) return;
+        string base64Data = parts[4];
 
+        // Skip if own message (already displayed locally)
         if (string.Equals(senderName, _username, StringComparison.OrdinalIgnoreCase) && _fileMessages.ContainsKey(fileId))
             return;
 
-        FileTransferInfo info = new()
+        // Decode Base64 image data and create thumbnail
+        try
         {
-            FileId = fileId, FileName = fileName, FileSize = fileSize,
-            SenderName = senderName, IsImage = true
-        };
+            byte[] imageData = Convert.FromBase64String(base64Data);
+            var thumbnail = ImageService.CreateThumbnail(imageData);
 
-        DisplayMessage msg = new(senderName, $"Sent image: {fileName}", _username)
-        {
-            IsImageMessage = true, FileInfo = info, TransferStatus = FileTransferStatus.Transferring
-        };
-        Messages.Add(msg);
-        _fileMessages[fileId] = msg;
-        MessagesListBox.ScrollIntoView(msg);
+            // Save to temp for "Open" functionality
+            string tempDir = Path.Combine(Path.GetTempPath(), "LAN_Chat_Received");
+            Directory.CreateDirectory(tempDir);
+            string savePath = Path.Combine(tempDir, $"{fileId}_{fileName}");
+            File.WriteAllBytes(savePath, imageData);
 
-        string tempDir = Path.Combine(Path.GetTempPath(), "LAN_Chat_Received");
-        _fileTransferService.RegisterFileReceive(fileId, Path.Combine(tempDir, $"{fileId}_{fileName}"), fileSize);
+            FileTransferInfo info = new()
+            {
+                FileId = fileId, FileName = fileName, FileSize = fileSize,
+                SenderName = senderName, IsImage = true
+            };
+
+            DisplayMessage msg = new(senderName, $"Sent image: {fileName}", _username)
+            {
+                IsImageMessage = true, FileInfo = info, ImageThumbnail = thumbnail,
+                TransferStatus = FileTransferStatus.Completed, LocalFilePath = savePath
+            };
+            Messages.Add(msg);
+            _fileMessages[fileId] = msg;
+            MessagesListBox.ScrollIntoView(msg);
+        }
+        catch { /* Invalid Base64 data */ }
     }
 
     private void HandleFileMetadata(string content)
@@ -380,24 +382,16 @@ public partial class MainWindow : Window
         string fileName = parts[2];
         if (!long.TryParse(parts[3], out long fileSize)) return;
 
+        // Skip if own message (sender already shows progress locally)
         if (string.Equals(senderName, _username, StringComparison.OrdinalIgnoreCase) && _fileMessages.ContainsKey(fileId))
             return;
 
-        FileTransferInfo info = new()
-        {
-            FileId = fileId, FileName = fileName, FileSize = fileSize,
-            SenderName = senderName, IsImage = false
-        };
+        // For receivers: DON'T show the file message yet — save metadata and wait for [COMPLETE]
+        _pendingFileMetadata[fileId] = (senderName, fileName, fileSize);
 
-        DisplayMessage msg = new(senderName, $"Sent file: {fileName}", _username)
-        {
-            IsFileMessage = true, FileInfo = info, TransferStatus = FileTransferStatus.Transferring
-        };
-        Messages.Add(msg);
-        _fileMessages[fileId] = msg;
-        MessagesListBox.ScrollIntoView(msg);
-
+        // Register to receive the binary data in background
         string tempDir = Path.Combine(Path.GetTempPath(), "LAN_Chat_Received");
+        Directory.CreateDirectory(tempDir);
         _fileTransferService.RegisterFileReceive(fileId, Path.Combine(tempDir, $"{fileId}_{fileName}"), fileSize);
     }
 
@@ -411,8 +405,39 @@ public partial class MainWindow : Window
 
     private void HandleComplete(string content)
     {
-        if (Guid.TryParse(content.Trim(), out Guid fileId))
-            if (_fileMessages.TryGetValue(fileId, out var msg)) msg.TransferStatus = FileTransferStatus.Completed;
+        if (!Guid.TryParse(content.Trim(), out Guid fileId)) return;
+
+        // If sender's own message — just update status
+        if (_fileMessages.TryGetValue(fileId, out var msg))
+        {
+            msg.TransferStatus = FileTransferStatus.Completed;
+            return;
+        }
+
+        // For receiver: now create the DisplayMessage from pending metadata
+        if (_pendingFileMetadata.TryGetValue(fileId, out var meta))
+        {
+            _pendingFileMetadata.Remove(fileId);
+
+            string tempDir = Path.Combine(Path.GetTempPath(), "LAN_Chat_Received");
+            string savePath = Path.Combine(tempDir, $"{fileId}_{meta.FileName}");
+
+            FileTransferInfo info = new()
+            {
+                FileId = fileId, FileName = meta.FileName, FileSize = meta.FileSize,
+                SenderName = meta.SenderName, IsImage = false
+            };
+
+            DisplayMessage fileMsg = new(meta.SenderName, $"Sent file: {meta.FileName}", _username)
+            {
+                IsFileMessage = true, FileInfo = info,
+                TransferStatus = FileTransferStatus.Completed,
+                LocalFilePath = File.Exists(savePath) ? savePath : null
+            };
+            Messages.Add(fileMsg);
+            _fileMessages[fileId] = fileMsg;
+            MessagesListBox.ScrollIntoView(fileMsg);
+        }
     }
 
     // ── File transfer events ──
