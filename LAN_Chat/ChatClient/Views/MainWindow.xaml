@@ -6,21 +6,26 @@
         xmlns:emoji="clr-namespace:Emoji.Wpf;assembly=Emoji.Wpf"
         xmlns:converters="clr-namespace:ChatClient.Converters"
         mc:Ignorable="d"
-        Title="LAN Chat Room" Height="700" Width="1080" MinHeight="580" MinWidth="900"
-        Background="#FFEAF0F4" FontFamily="Segoe UI">
+        Title="LAN Chat Room" Height="720" Width="1120" MinHeight="580" MinWidth="900"
+        Background="#FFEAF0F4" FontFamily="Segoe UI"
+        Closing="Window_Closing">
+
     <Window.Resources>
-        <!-- ── Material Design Icon Geometries ── -->
+        <!-- ── Icons ── -->
         <Geometry x:Key="EmojiIcon">M11.99,2C6.47,2,2,6.48,2,12s4.47,10,9.99,10C17.52,22,22,17.52,22,12S17.52,2,11.99,2zM12,20c-4.42,0-8-3.58-8-8s3.58-8,8-8 8,3.58,8,8-3.58,8-8,8zM15.5,11c0.83,0,1.5-0.67,1.5-1.5S16.33,8,15.5,8 14,8.67,14,9.5s0.67,1.5,1.5,1.5zM8.5,11c0.83,0,1.5-0.67,1.5-1.5S9.33,8,8.5,8 7,8.67,7,9.5 7.67,11,8.5,11zM12,17.5c2.33,0,4.31-1.46,5.11-3.5H6.89C7.69,16.04,9.67,17.5,12,17.5z</Geometry>
         <Geometry x:Key="ImageIcon">M21,19V5c0-1.1-0.9-2-2-2H5c-1.1,0-2,0.9-2,2v14c0,1.1,0.9,2,2,2h14C20.1,21,21,20.1,21,19zM8.5,13.5l2.5,3.01L14.5,12l4.5,6H5L8.5,13.5z</Geometry>
         <Geometry x:Key="AttachIcon">M16.5,6v11.5c0,2.21-1.79,4-4,4s-4-1.79-4-4V5c0-1.38,1.12-2.5,2.5-2.5s2.5,1.12,2.5,2.5v10.5c0,0.55-0.45,1-1,1s-1-0.45-1-1V6H10v9.5c0,1.38,1.12,2.5,2.5,2.5s2.5-1.12,2.5-2.5V5c0-2.21-1.79-4-4-4S7,2.79,7,5v12.5c0,3.04,2.46,5.5,5.5,5.5s5.5-2.46,5.5-5.5V6H16.5z</Geometry>
         <Geometry x:Key="SendIcon">M2.01,21L23,12L2.01,3L2,10l15,2L2,14L2.01,21z</Geometry>
         <Geometry x:Key="PersonIcon">M12,12c2.21,0,4-1.79,4-4s-1.79-4-4-4-4,1.79-4,4,1.79,4,4,4zM12,14c-2.67,0-8,1.34-8,4v2h16v-2c0-2.66-5.33-4-8-4z</Geometry>
 
+        <!-- ── Converters ── -->
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility"/>
         <converters:BoolToAlignmentConverter x:Key="BoolToAlignment"/>
         <converters:BoolToBrushConverter x:Key="BoolToBrush"/>
+        <converters:OwnMessageForegroundConverter x:Key="OwnMessageForegroundConverter"/>
 
-        <!-- ── Rounded TextBox Style ── -->
+        <!-- ── Styles ── -->
         <Style x:Key="RoundedTextBoxStyle" TargetType="TextBox">
             <Setter Property="Background" Value="White"/>
             <Setter Property="BorderBrush" Value="#FFE2E8F0"/>
@@ -33,8 +38,7 @@
                         <Border Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="10"
-                                Padding="{TemplateBinding Padding}">
+                                CornerRadius="10" Padding="{TemplateBinding Padding}">
                             <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
                         </Border>
                     </ControlTemplate>
@@ -42,7 +46,6 @@
             </Setter>
         </Style>
 
-        <!-- ── Primary Button (rounded) ── -->
         <Style x:Key="PrimaryButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#FF0F766E"/>
             <Setter Property="Foreground" Value="White"/>
@@ -61,7 +64,6 @@
             </Setter>
         </Style>
 
-        <!-- ── Icon Button (rounded) ── -->
         <Style x:Key="IconButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#FFFFF7ED"/>
             <Setter Property="BorderBrush" Value="#FFF59E0B"/>
@@ -69,8 +71,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="1" CornerRadius="10" Padding="6">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -79,84 +80,274 @@
             </Setter>
         </Style>
 
-        <!-- ── Text message template (left/right bubble) ── -->
+        <Style x:Key="RoomTabStyle" TargetType="RadioButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#FF64748B"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="Padding" Value="14,8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd" CornerRadius="8" Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FF0F766E"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FFE2E8F0"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Reaction ContextMenu: horizontal emoji bar using Buttons (not MenuItems) -->
+        <Style x:Key="ReactionContextMenuStyle" TargetType="ContextMenu">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="#FF1E2D3D"
+                                BorderBrush="#FF334155"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Padding="6,4">
+                            <Border.Effect>
+                                <DropShadowEffect Color="Black" BlurRadius="12" ShadowDepth="2" Opacity="0.4" Direction="270"/>
+                            </Border.Effect>
+                            <StackPanel Orientation="Horizontal" IsItemsHost="True"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ReactionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="38"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="8" Padding="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FF334155"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FF4A5568"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ── Text message template ── -->
         <DataTemplate x:Key="TextMessageTemplate">
-            <Border Padding="10" Margin="0,4" CornerRadius="14"
-                    Background="{Binding IsOwnMessage, Converter={StaticResource BoolToBrush}}"
-                    BorderBrush="#FFE2E8F0" BorderThickness="1"
-                    HorizontalAlignment="{Binding IsOwnMessage, Converter={StaticResource BoolToAlignment}}"
-                    MaxWidth="520">
-                <emoji:TextBlock TextWrapping="Wrap" FontSize="14">
-                    <Run Text="[" Foreground="#FF94A3B8"/>
-                    <Run Text="{Binding TimestampText, Mode=OneWay}" Foreground="#FF94A3B8"/>
-                    <Run Text="] " Foreground="#FF94A3B8"/>
-                    <Run Text="{Binding SenderDisplayName, Mode=OneWay}" FontWeight="Bold" Foreground="#FF0F766E"/>
-                    <Run Text=": "/>
-                    <Run Text="{Binding Content}"/>
-                </emoji:TextBlock>
-            </Border>
+            <Grid>
+                <Border Padding="10,8" Margin="0,3" CornerRadius="14"
+                        Background="{Binding IsOwnMessage, Converter={StaticResource BoolToBrush}}"
+                        BorderBrush="#FFE2E8F0" BorderThickness="1"
+                        HorizontalAlignment="{Binding IsOwnMessage, Converter={StaticResource BoolToAlignment}}"
+                        MaxWidth="520">
+                    <Border.ContextMenu>
+                        <ContextMenu Style="{StaticResource ReactionContextMenuStyle}">
+                            <Button Tag="👍" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="👍" FontSize="20"/></Button>
+                            <Button Tag="❤️" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="❤️" FontSize="20"/></Button>
+                            <Button Tag="😂" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="😂" FontSize="20"/></Button>
+                            <Button Tag="😢" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="😢" FontSize="20"/></Button>
+                            <Button Tag="😮" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="😮" FontSize="20"/></Button>
+                        </ContextMenu>
+                    </Border.ContextMenu>
+                    <StackPanel>
+                        <emoji:TextBlock TextWrapping="Wrap" FontSize="14">
+                            <Run Text="[" Foreground="#FF94A3B8"/>
+                            <Run Text="{Binding TimestampText, Mode=OneWay}" Foreground="#FF94A3B8"/>
+                            <Run Text="] " Foreground="#FF94A3B8"/>
+                            <Run Text="{Binding SenderDisplayName, Mode=OneWay}" FontWeight="Bold" Foreground="#FF0F766E"/>
+                            <Run Text=": "/>
+                            <Run Text="{Binding Content}"/>
+                        </emoji:TextBlock>
+                        <!-- Reaction chips -->
+                        <ItemsControl ItemsSource="{Binding Reactions}"
+                                      Visibility="{Binding HasReactions, Converter={StaticResource BoolToVisibility}}"
+                                      Margin="0,4,0,0">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="10" Background="#FFF1F5F9" BorderBrush="#FFE2E8F0"
+                                            BorderThickness="1" Margin="2,1" Padding="6,2">
+                                        <emoji:TextBlock FontSize="12">
+                                            <Run Text="{Binding ReactionType}"/>
+                                            <Run Text=" x "/>
+                                            <Run Text="{Binding Count}" FontWeight="SemiBold"/>
+                                        </emoji:TextBlock>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </Grid>
         </DataTemplate>
 
-        <!-- ── System message template (centered) ── -->
+        <!-- ── System message template ── -->
         <DataTemplate x:Key="SystemMessageTemplate">
-            <Border Padding="8" Margin="0,4" CornerRadius="14" Background="#FFF0FDF4" BorderBrush="#FFBBF7D0" BorderThickness="1"
-                    HorizontalAlignment="Center" MaxWidth="400">
-                <emoji:TextBlock TextWrapping="Wrap" FontSize="13" FontStyle="Italic" Foreground="#FF15803D" HorizontalAlignment="Center">
-                    <Run Text="{Binding Content}"/>
-                </emoji:TextBlock>
-            </Border>
-        </DataTemplate>
-
-        <!-- ── Image message template (left/right bubble) ── -->
-        <DataTemplate x:Key="ImageMessageTemplate">
-            <Border Padding="10" Margin="0,4" CornerRadius="14"
-                    Background="{Binding IsOwnMessage, Converter={StaticResource BoolToBrush}}"
-                    BorderBrush="#FFE2E8F0" BorderThickness="1"
-                    HorizontalAlignment="{Binding IsOwnMessage, Converter={StaticResource BoolToAlignment}}"
-                    MaxWidth="520">
-                <StackPanel>
-                    <emoji:TextBlock FontSize="14" Margin="0,0,0,6">
-                        <Run Text="[" Foreground="#FF94A3B8"/>
-                        <Run Text="{Binding TimestampText, Mode=OneWay}" Foreground="#FF94A3B8"/>
-                        <Run Text="] " Foreground="#FF94A3B8"/>
-                        <Run Text="{Binding SenderDisplayName, Mode=OneWay}" FontWeight="Bold" Foreground="#FF0F766E"/>
-                        <Run Text=" sent an image"/>
-                    </emoji:TextBlock>
-                    <Image Source="{Binding ImageThumbnail}" MaxWidth="300" MaxHeight="300"
-                           HorizontalAlignment="{Binding IsOwnMessage, Converter={StaticResource BoolToAlignment}}"
-                           Cursor="Hand" MouseLeftButtonDown="ImageThumbnail_Click" Margin="0,4"/>
+            <Border Margin="0,6" HorizontalAlignment="Center">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="20" Height="20" Fill="#FFE0F2FE" VerticalAlignment="Center" Margin="0,0,6,0">
+                        <Ellipse.OpacityMask>
+                            <VisualBrush Stretch="Uniform">
+                                <VisualBrush.Visual>
+                                    <Path Data="{StaticResource PersonIcon}" Fill="Black"/>
+                                </VisualBrush.Visual>
+                            </VisualBrush>
+                        </Ellipse.OpacityMask>
+                    </Ellipse>
+                    <Border Background="#FFEFF8FF" BorderBrush="#FFB3E0FF" BorderThickness="1"
+                            CornerRadius="10" Padding="10,4">
+                        <emoji:TextBlock FontSize="12" FontStyle="Italic" Foreground="#FF0369A1"
+                                         HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="380">
+                            <Run Text="{Binding Content}"/>
+                        </emoji:TextBlock>
+                    </Border>
                 </StackPanel>
             </Border>
         </DataTemplate>
 
-        <!-- ── File message template (left/right bubble) ── -->
-        <DataTemplate x:Key="FileMessageTemplate">
-            <Border Padding="10" Margin="0,4" CornerRadius="14"
+        <!-- ── Image message template ── -->
+        <DataTemplate x:Key="ImageMessageTemplate">
+            <Border Padding="10,8" Margin="0,3" CornerRadius="14"
                     Background="{Binding IsOwnMessage, Converter={StaticResource BoolToBrush}}"
-                    BorderBrush="#FFFDE68A" BorderThickness="1"
+                    BorderBrush="#FFE2E8F0" BorderThickness="1"
                     HorizontalAlignment="{Binding IsOwnMessage, Converter={StaticResource BoolToAlignment}}"
                     MaxWidth="520">
+                <Border.ContextMenu>
+                    <ContextMenu Style="{StaticResource ReactionContextMenuStyle}">
+                        <Button Tag="👍" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="👍" FontSize="20"/></Button>
+                        <Button Tag="❤️" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="❤️" FontSize="20"/></Button>
+                        <Button Tag="😂" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="😂" FontSize="20"/></Button>
+                        <Button Tag="😢" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="😢" FontSize="20"/></Button>
+                        <Button Tag="😮" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="😮" FontSize="20"/></Button>
+                    </ContextMenu>
+                </Border.ContextMenu>
                 <StackPanel>
-                    <emoji:TextBlock FontSize="14">
+                    <emoji:TextBlock FontSize="13" Margin="0,0,0,6">
                         <Run Text="[" Foreground="#FF94A3B8"/>
                         <Run Text="{Binding TimestampText, Mode=OneWay}" Foreground="#FF94A3B8"/>
                         <Run Text="] " Foreground="#FF94A3B8"/>
                         <Run Text="{Binding SenderDisplayName, Mode=OneWay}" FontWeight="Bold" Foreground="#FF0F766E"/>
-                        <Run Text=" shared a file"/>
+                        <Run Text=" đã gửi ảnh"/>
+                    </emoji:TextBlock>
+                    <!-- Actual thumbnail (live/fresh message) -->
+                    <Image Source="{Binding ImageThumbnail}" MaxWidth="300" MaxHeight="300"
+                           HorizontalAlignment="{Binding IsOwnMessage, Converter={StaticResource BoolToAlignment}}"
+                           Cursor="Hand" MouseLeftButtonDown="ImageThumbnail_Click" Margin="0,4"
+                           Visibility="{Binding HasImageThumbnail, Converter={StaticResource BoolToVisibility}}"/>
+                    <!-- Placeholder for cached image (FileData stripped on server) -->
+                    <Border Visibility="{Binding HasImageThumbnail, Converter={StaticResource InverseBoolToVisibility}}"
+                            Background="#FFE2E8F0" CornerRadius="8" Padding="10,6" Margin="0,4">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource ImageIcon}" Fill="#FF94A3B8" Width="16" Height="16" Stretch="Uniform" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding Content}" Foreground="#FF64748B" FontStyle="Italic" FontSize="12" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Reactions}"
+                                  Visibility="{Binding HasReactions, Converter={StaticResource BoolToVisibility}}"
+                                  Margin="0,4,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="10" Background="#FFF1F5F9" BorderBrush="#FFE2E8F0"
+                                        BorderThickness="1" Margin="2,1" Padding="6,2">
+                                    <emoji:TextBlock FontSize="12">
+                                        <Run Text="{Binding ReactionType}"/>
+                                        <Run Text=" x "/>
+                                        <Run Text="{Binding Count}" FontWeight="SemiBold"/>
+                                    </emoji:TextBlock>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- ── File message template ── -->
+        <DataTemplate x:Key="FileMessageTemplate">
+            <Border Padding="10,8" Margin="0,3" CornerRadius="14"
+                    Background="{Binding IsOwnMessage, Converter={StaticResource BoolToBrush}}"
+                    BorderBrush="#FFFDE68A" BorderThickness="1"
+                    HorizontalAlignment="{Binding IsOwnMessage, Converter={StaticResource BoolToAlignment}}"
+                    MaxWidth="520">
+                <Border.ContextMenu>
+                    <ContextMenu Style="{StaticResource ReactionContextMenuStyle}">
+                        <Button Tag="👍" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="👍" FontSize="20"/></Button>
+                        <Button Tag="❤️" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="❤️" FontSize="20"/></Button>
+                        <Button Tag="😂" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="😂" FontSize="20"/></Button>
+                        <Button Tag="😢" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="😢" FontSize="20"/></Button>
+                        <Button Tag="😮" Style="{StaticResource ReactionButtonStyle}" Click="Reaction_Click"><emoji:TextBlock Text="😮" FontSize="20"/></Button>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <StackPanel>
+                    <emoji:TextBlock FontSize="13">
+                        <Run Text="[" Foreground="#FF94A3B8"/>
+                        <Run Text="{Binding TimestampText, Mode=OneWay}" Foreground="#FF94A3B8"/>
+                        <Run Text="] " Foreground="#FF94A3B8"/>
+                        <Run Text="{Binding SenderDisplayName, Mode=OneWay}" FontWeight="Bold" Foreground="#FF0F766E"/>
+                        <Run Text=" đã chia sẻ file"/>
                     </emoji:TextBlock>
                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                        <Path Data="{StaticResource AttachIcon}" Fill="#FF64748B" Width="18" Height="18" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <Path Data="{StaticResource AttachIcon}" Fill="#FF64748B" Width="18" Height="18"
+                              Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0"/>
                         <StackPanel VerticalAlignment="Center">
                             <TextBlock Text="{Binding FileInfo.FileName}" FontWeight="SemiBold" FontSize="13" Foreground="#FF1E293B"/>
                             <TextBlock Text="{Binding FileSizeText}" FontSize="11" Foreground="#FF64748B"/>
                         </StackPanel>
-                        <Button Content="Save" Margin="14,0,0,0" Padding="10,4" Cursor="Hand"
+                        <Button Content="Lưu" Margin="14,0,0,0" Padding="10,4" Cursor="Hand"
                                 Click="SaveFileButton_Click" Tag="{Binding}" Style="{StaticResource PrimaryButtonStyle}"
-                                Visibility="{Binding IsCompleted, Converter={StaticResource BoolToVisibility}}"/>
+                                Visibility="{Binding CanSaveFile, Converter={StaticResource BoolToVisibility}}"/>
                     </StackPanel>
-                    <!-- Progress bar only for sender (own messages) -->
                     <ProgressBar Value="{Binding TransferProgress}" Maximum="100" Height="4" Margin="0,6,0,0"
                                  Visibility="{Binding IsOwnMessage, Converter={StaticResource BoolToVisibility}}"/>
+                    <ItemsControl ItemsSource="{Binding Reactions}"
+                                  Visibility="{Binding HasReactions, Converter={StaticResource BoolToVisibility}}"
+                                  Margin="0,4,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="10" Background="#FFF1F5F9" BorderBrush="#FFE2E8F0"
+                                        BorderThickness="1" Margin="2,1" Padding="6,2">
+                                    <emoji:TextBlock FontSize="12">
+                                        <Run Text="{Binding ReactionType}"/>
+                                        <Run Text=" x "/>
+                                        <Run Text="{Binding Count}" FontWeight="SemiBold"/>
+                                    </emoji:TextBlock>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </Border>
         </DataTemplate>
@@ -168,206 +359,230 @@
             SystemMessageTemplate="{StaticResource SystemMessageTemplate}"/>
     </Window.Resources>
 
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- Root layout: Left Sidebar + Right Chat Panel              -->
+    <!-- ══════════════════════════════════════════════════════════ -->
     <Grid>
-        <Grid.Background>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#FFE0F2FE" Offset="0"/>
-                <GradientStop Color="#FFF8FAFC" Offset="0.45"/>
-                <GradientStop Color="#FFCCFBF1" Offset="1"/>
-            </LinearGradientBrush>
-        </Grid.Background>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
 
-        <Border Margin="22" Padding="18" CornerRadius="24" Background="#F7FFFFFF" BorderBrush="#CCE2E8F0" BorderThickness="1">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="200"/>
-                    <ColumnDefinition Width="14"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
+        <!-- ── Left Sidebar: Online Users ── -->
+        <Border Grid.Column="0" Background="#FF1E293B" CornerRadius="0,0,0,0">
+            <DockPanel>
+                <!-- Header -->
+                <Border DockPanel.Dock="Top" Padding="14,16" BorderBrush="#FF334155" BorderThickness="0,0,0,1">
+                    <StackPanel>
+                        <TextBlock Text="LAN Chat" FontSize="18" FontWeight="Bold" Foreground="White"/>
+                        <TextBlock x:Name="StatusTextBlock" Text="Offline" FontSize="11"
+                                   Foreground="#FF94A3B8" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
 
-                <!-- ══════════════════════════════════════════ -->
-                <!-- LEFT SIDEBAR — Online Users                -->
-                <!-- ══════════════════════════════════════════ -->
-                <Border Grid.Column="0" CornerRadius="18" Background="#FFF8FAFC" BorderBrush="#FFE2E8F0" BorderThickness="1" Padding="12">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
+                <!-- Room label -->
+                <TextBlock DockPanel.Dock="Top" Text="PHÒNG HIỆN TẠI" FontSize="10" FontWeight="SemiBold"
+                           Foreground="#FF64748B" Margin="14,12,14,4"/>
 
-                        <!-- Sidebar header -->
-                        <StackPanel Grid.Row="0" Margin="0,0,0,12">
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                <Ellipse Width="10" Height="10" Fill="#FF22C55E" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Online" FontSize="16" FontWeight="Bold" Foreground="#FF102A43"/>
-                            </StackPanel>
-                            <TextBlock x:Name="OnlineCountText" Text="0 users" FontSize="12" Foreground="#FF94A3B8" Margin="18,0,0,0"/>
-                        </StackPanel>
+                <!-- Current room display -->
+                <Border DockPanel.Dock="Top" Margin="10,0,10,8" Padding="10,6" CornerRadius="8"
+                        Background="#FF0F766E">
+                    <TextBlock x:Name="CurrentRoomText" Text="#GiaiTri" FontSize="13"
+                               FontWeight="SemiBold" Foreground="White"/>
+                </Border>
 
-                        <!-- User list -->
-                        <ListBox x:Name="OnlineUsersListBox" Grid.Row="1"
-                                 ItemsSource="{Binding OnlineUsers}"
-                                 BorderThickness="0" Background="Transparent"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Margin="0,4" HorizontalAlignment="Center" Width="150">
-                                        <Border HorizontalAlignment="Center" Width="48" Height="48" CornerRadius="24" Margin="0,0,0,4">
+                <!-- Online users label -->
+                <TextBlock DockPanel.Dock="Top" Text="ONLINE" FontSize="10" FontWeight="SemiBold"
+                           Foreground="#FF64748B" Margin="14,4,14,4"/>
+
+                <!-- Users list -->
+                <ScrollViewer DockPanel.Dock="Top" VerticalScrollBarVisibility="Auto" Margin="0,0,0,0">
+                    <ItemsControl x:Name="OnlineUsersPanel" Margin="10,0,10,10">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="8,6" Margin="0,2" CornerRadius="8"
+                                        Background="#FF334155">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border Width="30" Height="30" CornerRadius="15" Margin="0,0,8,0">
                                             <Border.Background>
                                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                                     <GradientStop Color="#FF0F766E" Offset="0"/>
-                                                    <GradientStop Color="#FF2DD4BF" Offset="1"/>
+                                                    <GradientStop Color="#FF0891B2" Offset="1"/>
                                                 </LinearGradientBrush>
                                             </Border.Background>
-                                            <TextBlock Text="{Binding Initial}" FontSize="20" FontWeight="Bold"
-                                                       Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Initial}" FontSize="13" FontWeight="Bold"
+                                                       Foreground="White" HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
                                         </Border>
-                                        <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
-                                                   Foreground="#FF334155" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Name}" FontSize="12" Foreground="White"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                     </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
-                </Border>
-
-                <!-- ══════════════════════════════════════════ -->
-                <!-- RIGHT CONTENT — Chat Area                  -->
-                <!-- ══════════════════════════════════════════ -->
-                <Grid Grid.Column="2">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- Header -->
-                    <Grid Grid.Row="0" Margin="0,0,0,18">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-
-                        <Border Width="58" Height="58" CornerRadius="18" Background="#FF102A43" Margin="0,0,14,0">
-                            <Image Source="{StaticResource AppIcon}" Width="42" Height="42"/>
-                        </Border>
-
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Text="Chat Room" FontSize="26" FontWeight="Bold" Foreground="#FF102A43"/>
-                            <TextBlock Text="Chat nội bộ" FontSize="13" Foreground="#FF62748A"/>
-                        </StackPanel>
-
-                        <Border Grid.Column="2" Padding="12,7" CornerRadius="16" Background="#FFFFF1F2" VerticalAlignment="Center">
-                            <TextBlock x:Name="StatusTextBlock" Text="Offline" Foreground="#FFBE123C" FontWeight="Bold"/>
-                        </Border>
-                    </Grid>
-
-                    <!-- Connection bar -->
-                    <Border Grid.Row="1" Padding="14" CornerRadius="18" Background="#FFFFFFFF" BorderBrush="#FFE2E8F0" BorderThickness="1" Margin="0,0,0,14">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="170"/>
-                                <ColumnDefinition Width="14"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="190"/>
-                                <ColumnDefinition Width="14"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock Grid.Column="0" Text="Server IP" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold" Foreground="#FF334155"/>
-                            <TextBox x:Name="ServerIpTextBox" Grid.Column="1" Height="36" Text="127.0.0.1" Style="{StaticResource RoundedTextBoxStyle}"/>
-
-                            <TextBlock Grid.Column="3" Text="Username" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold" Foreground="#FF334155"/>
-                            <TextBox x:Name="UsernameTextBox" Grid.Column="4" Height="36" Style="{StaticResource RoundedTextBoxStyle}"/>
-
-                            <Button x:Name="ConnectButton" Grid.Column="6" Height="36" MinWidth="110" Content="Connect" Style="{StaticResource PrimaryButtonStyle}" Click="ConnectButton_Click"/>
-                        </Grid>
-                    </Border>
-
-                    <!-- Messages area -->
-                    <Border Grid.Row="2" Padding="12" CornerRadius="20" Background="#FFFFFFFF" BorderBrush="#FFE2E8F0" BorderThickness="1">
-                        <ListBox x:Name="MessagesListBox" ItemsSource="{Binding Messages}" BorderThickness="0" Background="Transparent"
-                                 HorizontalContentAlignment="Stretch"
-                                 ItemTemplateSelector="{StaticResource MessageTemplateSelector}"/>
-                    </Border>
-
-                    <!-- Input bar -->
-                    <Grid Grid.Row="3" Margin="0,14,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="6"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="6"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="10"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="10"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Emoji button + popup grid -->
-                        <Grid Grid.Column="0">
-                            <Button x:Name="EmojiButton" Width="46" Height="42" Style="{StaticResource IconButtonStyle}" Click="EmojiButton_Click">
-                                <Path Data="{StaticResource EmojiIcon}" Fill="#FFF59E0B" Width="22" Height="22" Stretch="Uniform"/>
-                            </Button>
-                            <Popup x:Name="EmojiPopup" PlacementTarget="{Binding ElementName=EmojiButton}" Placement="Top" StaysOpen="False" AllowsTransparency="True">
-                                <Border Padding="12" CornerRadius="18" Background="White" BorderBrush="#FFE2E8F0" BorderThickness="1">
-                                    <ScrollViewer MaxHeight="280" VerticalScrollBarVisibility="Auto">
-                                        <ItemsControl x:Name="EmojiItemsControl">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <WrapPanel Width="310"/>
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Button Width="42" Height="42" Margin="2" Cursor="Hand" Click="EmojiItem_Click" Tag="{Binding}"
-                                                            Background="Transparent" BorderThickness="0">
-                                                        <Button.Template>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="2">
-                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                </Border>
-                                                            </ControlTemplate>
-                                                        </Button.Template>
-                                                        <emoji:TextBlock Text="{Binding}" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    </Button>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </ScrollViewer>
                                 </Border>
-                            </Popup>
-                        </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
 
-                        <!-- Image button with Material icon -->
-                        <Button Grid.Column="2" x:Name="ImageButton" Width="46" Height="42" Style="{StaticResource IconButtonStyle}" Click="ImageButton_Click">
-                            <Path Data="{StaticResource ImageIcon}" Fill="#FFF59E0B" Width="22" Height="22" Stretch="Uniform"/>
-                        </Button>
+        <!-- ── Right Panel: Chat Area ── -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Connection bar -->
+                <RowDefinition Height="Auto"/> <!-- Room tabs -->
+                <RowDefinition Height="*"/>    <!-- Messages -->
+                <RowDefinition Height="Auto"/> <!-- Typing indicator -->
+                <RowDefinition Height="Auto"/> <!-- Reconnect banner -->
+                <RowDefinition Height="Auto"/> <!-- Input bar -->
+            </Grid.RowDefinitions>
 
-                        <!-- File attach button with Material icon -->
-                        <Button Grid.Column="4" x:Name="AttachButton" Width="46" Height="42" Style="{StaticResource IconButtonStyle}" Click="AttachButton_Click">
-                            <Path Data="{StaticResource AttachIcon}" Fill="#FFF59E0B" Width="22" Height="22" Stretch="Uniform"/>
-                        </Button>
+            <!-- ── Connection Bar ── -->
+            <Border Grid.Row="0" Background="#FFF8FAFC" Padding="16,10" BorderBrush="#FFE2E8F0" BorderThickness="0,0,0,1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="ServerIpTextBox" Grid.Column="0" Height="36" Margin="0,0,8,0"
+                             Style="{StaticResource RoundedTextBoxStyle}"
+                             Text="192.168.1.1" ToolTip="Server IP"/>
+                    <TextBox x:Name="UsernameTextBox" Grid.Column="1" Height="36" Margin="0,0,8,0"
+                             Style="{StaticResource RoundedTextBoxStyle}"
+                             Text="User" ToolTip="Username"/>
+                    <Button x:Name="ConnectButton" Grid.Column="2" Content="Kết nối" Height="36"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Click="ConnectButton_Click"/>
+                </Grid>
+            </Border>
 
-                        <!-- Message input (rounded) -->
-                        <TextBox x:Name="MessageInputTextBox" Grid.Column="6" Height="42" FontSize="14"
-                                 Style="{StaticResource RoundedTextBoxStyle}" KeyDown="MessageInputTextBox_KeyDown"/>
+            <!-- ── Room Tabs ── -->
+            <Border Grid.Row="1" Background="#FFF1F5F9" Padding="12,8" BorderBrush="#FFE2E8F0" BorderThickness="0,0,0,1">
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="Room1Tab" Content="#GiaiTri" Style="{StaticResource RoomTabStyle}"
+                                 IsChecked="True" GroupName="Rooms" Checked="RoomTab_Checked" Tag="#GiaiTri"/>
+                    <RadioButton x:Name="Room2Tab" Content="#HocTap" Style="{StaticResource RoomTabStyle}"
+                                 GroupName="Rooms" Checked="RoomTab_Checked" Tag="#HocTap"/>
+                    <RadioButton x:Name="Room3Tab" Content="#ThongBao" Style="{StaticResource RoomTabStyle}"
+                                 GroupName="Rooms" Checked="RoomTab_Checked" Tag="#ThongBao"/>
+                </StackPanel>
+            </Border>
 
-                        <!-- Send button with Material icon -->
-                        <Button x:Name="SendButton" Grid.Column="8" Height="42" MinWidth="100" Style="{StaticResource PrimaryButtonStyle}" Click="SendButton_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Data="{StaticResource SendIcon}" Fill="White" Width="18" Height="18" Stretch="Uniform" Margin="0,0,6,0"/>
-                                <TextBlock Text="Send" Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-                    </Grid>
+            <!-- ── Message List ── -->
+            <ListBox Grid.Row="2" x:Name="MessagesListBox"
+                     ItemsSource="{Binding Messages}"
+                     ItemTemplateSelector="{StaticResource MessageTemplateSelector}"
+                     Background="Transparent" BorderThickness="0"
+                     HorizontalContentAlignment="Stretch"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     ScrollViewer.CanContentScroll="False"
+                     VirtualizingPanel.IsVirtualizing="False"
+                     Padding="12"/>
+
+            <!-- ── Typing Indicator ── -->
+            <Border Grid.Row="3" Padding="16,4" Visibility="{Binding HasTypingUsers, Converter={StaticResource BoolToVisibility}}">
+                <emoji:TextBlock FontSize="11" FontStyle="Italic"
+                                 Foreground="#FF94A3B8" Text="{Binding TypingIndicatorText}"/>
+            </Border>
+
+            <!-- ── Reconnect Banner ── -->
+            <Border Grid.Row="4" x:Name="ReconnectBanner" Background="#FFFEF3C7"
+                    Padding="16,8" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <TextBlock Text="⚠ " Foreground="#FFB45309" FontSize="13"/>
+                    <TextBlock x:Name="ReconnectText" Text="Đang thử kết nối lại..." Foreground="#FFB45309" FontSize="13" FontWeight="SemiBold"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ── Input Bar ── -->
+            <Grid Grid.Row="5" x:Name="InputGrid" Margin="12,8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Emoji popup -->
+                <Popup x:Name="EmojiPopup" Grid.Row="0" StaysOpen="False" Placement="Top"
+                       PlacementTarget="{Binding ElementName=EmojiButton}">
+                    <Border Background="White" BorderBrush="#FFE2E8F0" BorderThickness="1"
+                            CornerRadius="12" Padding="8" Width="320">
+                        <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl x:Name="EmojiItemsControl">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Width="36" Height="36" Background="Transparent" BorderThickness="0"
+                                                Cursor="Hand" Click="EmojiButton_Selected" Tag="{Binding}">
+                                            <emoji:TextBlock Text="{Binding}" FontSize="20"/>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </Popup>
+
+                <!-- Input row -->
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="EmojiButton" Grid.Column="0" Width="40" Height="40"
+                            Style="{StaticResource IconButtonStyle}" Margin="0,0,6,0"
+                            ToolTip="Emoji" Click="EmojiToggle_Click">
+                        <Path Data="{StaticResource EmojiIcon}" Fill="#FFF59E0B"
+                              Width="20" Height="20" Stretch="Uniform"/>
+                    </Button>
+
+                    <Button x:Name="ImageButton" Grid.Column="1" Width="40" Height="40"
+                            Style="{StaticResource IconButtonStyle}" Margin="0,0,6,0"
+                            ToolTip="Gửi ảnh" Click="ImageButton_Click">
+                        <Path Data="{StaticResource ImageIcon}" Fill="#FFF59E0B"
+                              Width="20" Height="20" Stretch="Uniform"/>
+                    </Button>
+
+                    <Button x:Name="AttachButton" Grid.Column="2" Width="40" Height="40"
+                            Style="{StaticResource IconButtonStyle}" Margin="0,0,6,0"
+                            ToolTip="Đính kèm file" Click="AttachButton_Click">
+                        <Path Data="{StaticResource AttachIcon}" Fill="#FFF59E0B"
+                              Width="20" Height="20" Stretch="Uniform"/>
+                    </Button>
+
+                    <TextBox x:Name="MessageInputTextBox" Grid.Column="3" Height="40"
+                             Style="{StaticResource RoundedTextBoxStyle}"
+                             VerticalContentAlignment="Center" Margin="0,0,6,0"
+                             TextChanged="MessageInputTextBox_TextChanged"
+                             KeyDown="MessageInput_KeyDown"/>
+
+                    <Button x:Name="SendButton" Grid.Column="4" Width="40" Height="40"
+                            Style="{StaticResource PrimaryButtonStyle}" Padding="0"
+                            ToolTip="Gửi" Click="SendButton_Click">
+                        <Path Data="{StaticResource SendIcon}" Fill="White"
+                              Width="20" Height="20" Stretch="Uniform"/>
+                    </Button>
                 </Grid>
             </Grid>
-        </Border>
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════════ -->
+        <!-- Image Viewer Overlay                                       -->
+        <!-- ══════════════════════════════════════════════════════════ -->
+        <Grid x:Name="ImageViewerOverlay" Grid.ColumnSpan="2" Background="#D9000000" Visibility="Collapsed" Panel.ZIndex="100">
+            <Button HorizontalAlignment="Right" VerticalAlignment="Top" Margin="20" Width="40" Height="40"
+                    Background="Transparent" BorderThickness="0" Cursor="Hand" Click="CloseImageViewer_Click">
+                <TextBlock Text="✕" Foreground="White" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Button>
+            <Image x:Name="ViewerImage" Margin="60" Stretch="Uniform" />
+        </Grid>
     </Grid>
 </Window>

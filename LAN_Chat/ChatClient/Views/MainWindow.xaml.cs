@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -7,505 +9,670 @@ using Chat.Shared.Constants;
 using Chat.Shared.Models;
 using ChatClient.Models;
 using ChatClient.Services;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 
 namespace ChatClient;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Window, INotifyPropertyChanged
 {
-    private readonly NetworkService _networkService = new();
-    private readonly FileTransferService _fileTransferService = new();
-    private string _username = string.Empty;
+    // ── Services ──
+    private readonly ChatHubService _hubService = new();
 
-    private readonly Dictionary<Guid, DisplayMessage> _fileMessages = new();
-    // Pending file metadata for receivers — only shown after [COMPLETE]
-    private readonly Dictionary<Guid, (string SenderName, string FileName, long FileSize)> _pendingFileMetadata = new();
+    // ── State ──
+    private string _username = string.Empty;
+    private string _currentRoom = AppConstants.DefaultRoom;
+    // All messages keyed by Id for reaction lookup
+    private readonly Dictionary<string, DisplayMessage> _messageById = new();
+
+    // Typing indicator debounce
+    private System.Threading.Timer? _typingTimer;
+    private bool _isTyping;
+
+    // ── Observable properties ──
+    public ObservableCollection<DisplayMessage> Messages { get; } = [];
+    public ObservableCollection<OnlineUser> OnlineUsers { get; } = [];
+
+    private ObservableCollection<string> _typingUsers = [];
+    public bool HasTypingUsers => _typingUsers.Count > 0;
+    public string TypingIndicatorText =>
+        _typingUsers.Count == 0 ? string.Empty
+        : $"{string.Join(", ", _typingUsers)} đang nhập tin nhắn...";
 
     private readonly string[] _emojiList =
     [
         "😀","😃","😄","😁","😆","😅","🤣","😂","🙂","😊",
         "😇","🥰","😍","🤩","😘","😗","😚","😋","😛","😜",
         "🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐",
-        "😑","😶","😏","😒","🙄","😬","😮‍💨","🤥","😌","😔",
-        "😪","🤤","😴","😷","🤒","🤕","🤢","🤮","🥵","🥶",
-        "🥴","😵","🤯","🤠","🥳","🥸","😎","🤓","🧐","😕",
-        "😟","🙁","😮","😯","😲","😳","🥺","😦","😨","😰",
-        "😥","😢","😭","😱","😖","😣","😞","😓","😩","😫",
-        "🥱","😤","😡","😠","🤬","👍","👎","👏","🙏","💪",
-        "🔥","✨","🎉","❤️","🧡","💛","💚","💙","💜","🖤",
-        "💯","⭐","✅","❌","💬","📌","☕","🍕","🎮","🚀"
+        "😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪",
+        "🤤","😴","😷","🤒","🤕","🤢","🤮","🥵","🥶","🥴",
+        "😵","🤯","🤠","🥳","😎","🤓","🧐","😕","😟","🙁",
+        "😮","😯","😲","😳","🥺","😦","😨","😰","😥","😢",
+        "😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤",
+        "😡","😠","🤬","👍","👎","👏","🙏","💪","🔥","✨",
+        "🎉","❤️","🧡","💛","💚","💙","💜","🖤","💯","🚀"
     ];
 
+    // ────────────────────────────────────────
     public MainWindow()
     {
         InitializeComponent();
-
-        Messages = new ObservableCollection<DisplayMessage>();
-        OnlineUsers = new ObservableCollection<OnlineUser>();
         DataContext = this;
 
         EmojiItemsControl.ItemsSource = _emojiList;
+        OnlineUsersPanel.ItemsSource = OnlineUsers;
 
-        _networkService.MessageReceived += OnMessageReceived;
-        _fileTransferService.FileProgressReceived += OnFileProgress;
-        _fileTransferService.FileCompleted += OnFileCompleted;
+        // Register SignalR event handlers
+        _hubService.MessageReceived     += OnMessageReceived;
+        _hubService.SystemMessageReceived += OnSystemMessageReceived;
+        _hubService.UserListUpdated     += OnUserListUpdated;
+        _hubService.CachedMessagesReceived += OnCachedMessagesReceived;
+        _hubService.TypingStatusReceived += OnTypingStatusReceived;
+        _hubService.ReactionUpdated     += OnReactionUpdated;
+        _hubService.Reconnecting        += OnReconnecting;
+        _hubService.Reconnected         += OnReconnected;
+        _hubService.Closed              += OnConnectionClosed;
     }
 
-    public ObservableCollection<DisplayMessage> Messages { get; }
-    public ObservableCollection<OnlineUser> OnlineUsers { get; }
+    // ══════════════════════════════════════════════════════
+    // INotifyPropertyChanged
+    // ══════════════════════════════════════════════════════
 
-    // ── Connection ──
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropertyChanged([CallerMemberName] string? name = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+    // ══════════════════════════════════════════════════════
+    // Connection
+    // ══════════════════════════════════════════════════════
 
     private async void ConnectButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_networkService.IsConnected) return;
-
         string serverIp = ServerIpTextBox.Text.Trim();
         string username = UsernameTextBox.Text.Trim();
 
         if (string.IsNullOrWhiteSpace(serverIp) || string.IsNullOrWhiteSpace(username))
         {
-            MessageBox.Show("Vui lòng nhập Server IP và Username.", "Thiếu thông tin", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Vui lòng nhập Server IP và Username.", "Thiếu thông tin",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
+        ConnectButton.IsEnabled = false;
         try
         {
-            await _networkService.ConnectAsync(serverIp, username);
             _username = username;
+            await _hubService.ConnectAsync(serverIp, username, _currentRoom);
 
-            try { await _fileTransferService.ConnectAsync(serverIp, username); }
-            catch { /* File transfer channel is optional */ }
-
-            ServerIpTextBox.IsEnabled = false;
-            UsernameTextBox.IsEnabled = false;
-            ConnectButton.IsEnabled = false;
-            StatusTextBlock.Text = "Online";
-            StatusTextBlock.Foreground = System.Windows.Media.Brushes.DarkGreen;
-            MessageInputTextBox.Focus();
+            StatusTextBlock.Text = $"Online • {_currentRoom}";
+            StatusTextBlock.Foreground = System.Windows.Media.Brushes.LightGreen;
+            ConnectButton.Content = "Đã kết nối";
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Không thể kết nối tới server: {ex.Message}", "Lỗi kết nối", MessageBoxButton.OK, MessageBoxImage.Error);
+            ConnectButton.IsEnabled = true;
+            MessageBox.Show($"Không thể kết nối: {ex.Message}", "Lỗi kết nối",
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
-    // ── Send Message ──
-
-    private async void SendButton_Click(object sender, RoutedEventArgs e) => await SendCurrentMessageAsync();
-
-    private async void MessageInputTextBox_KeyDown(object sender, KeyEventArgs e)
+    private async void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
     {
-        if (e.Key == Key.Enter) { e.Handled = true; await SendCurrentMessageAsync(); }
+        _typingTimer?.Dispose();
+        await _hubService.DisposeAsync();
     }
 
-    private async Task SendCurrentMessageAsync()
+    // ══════════════════════════════════════════════════════
+    // Room Tabs
+    // ══════════════════════════════════════════════════════
+
+    private async void RoomTab_Checked(object sender, RoutedEventArgs e)
     {
-        if (!_networkService.IsConnected)
+        if (sender is not RadioButton rb) return;
+        string newRoom = rb.Tag?.ToString() ?? AppConstants.DefaultRoom;
+        if (newRoom == _currentRoom) return;
+
+        string oldRoom = _currentRoom;
+        _currentRoom = newRoom;
+        CurrentRoomText.Text = newRoom;
+
+        // Clear current messages — we'll get cached messages from server
+        Dispatcher.Invoke(Messages.Clear);
+        _messageById.Clear();
+
+        if (_hubService.IsConnected)
         {
-            MessageBox.Show("Bạn cần kết nối tới server trước khi gửi tin nhắn.", "Chưa kết nối", MessageBoxButton.OK, MessageBoxImage.Information);
+            await _hubService.SwitchRoomAsync(oldRoom, newRoom);
+            StatusTextBlock.Text = $"Online • {newRoom}";
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    // Sending: Text
+    // ══════════════════════════════════════════════════════
+
+    private async void SendButton_Click(object sender, RoutedEventArgs e) => await SendTextMessageAsync();
+    private async void MessageInput_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && !Keyboard.IsKeyDown(Key.LeftShift))
+        {
+            e.Handled = true;
+            await SendTextMessageAsync();
+        }
+    }
+
+    private async Task SendTextMessageAsync()
+    {
+        if (!_hubService.IsConnected)
+        {
+            MessageBox.Show("Chưa kết nối server.", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        string content = MessageInputTextBox.Text;
-        if (string.IsNullOrWhiteSpace(content)) return;
+        string text = MessageInputTextBox.Text.Trim();
+        if (string.IsNullOrEmpty(text)) return;
 
-        await _networkService.SendMessageAsync(_username, content);
         MessageInputTextBox.Clear();
-        MessageInputTextBox.Focus();
+
+        // Stop typing indicator
+        if (_isTyping)
+        {
+            _isTyping = false;
+            _typingTimer?.Dispose();
+            _ = _hubService.SendTypingStatusAsync(_currentRoom, false);
+        }
+
+        var message = new ChatMessage
+        {
+            SenderName = _username,
+            Content = text,
+            GroupName = _currentRoom
+        };
+
+        // Optimistic local display
+        var dm = AddDisplayMessage(new DisplayMessage(_username, text, _username));
+        _messageById[message.Id] = dm;
+
+        try { await _hubService.SendMessageAsync(message); }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Gửi tin nhắn thất bại: {ex.Message}", "Lỗi");
+        }
     }
 
-    // ── Emoji ──
-
-    private void EmojiButton_Click(object sender, RoutedEventArgs e)
-    {
-        EmojiPopup.IsOpen = !EmojiPopup.IsOpen;
-    }
-
-    private void EmojiItem_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button btn || btn.Tag is not string emoji) return;
-
-        int caretIndex = MessageInputTextBox.CaretIndex;
-        MessageInputTextBox.Text = MessageInputTextBox.Text.Insert(caretIndex, emoji);
-        MessageInputTextBox.CaretIndex = caretIndex + emoji.Length;
-        MessageInputTextBox.Focus();
-        EmojiPopup.IsOpen = false;
-    }
-
-    // ── Image ──
+    // ══════════════════════════════════════════════════════
+    // Sending: Image
+    // ══════════════════════════════════════════════════════
 
     private async void ImageButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!_networkService.IsConnected)
-        {
-            MessageBox.Show("Bạn cần kết nối tới server trước.", "Chưa kết nối", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        OpenFileDialog dialog = new()
+        if (!_hubService.IsConnected) { MessageBox.Show("Chưa kết nối server."); return; }
+        var dlg = new OpenFileDialog
         {
             Filter = "Image files|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp|All files|*.*",
-            Title = "Select an image to send"
+            Title = "Chọn ảnh để gửi"
         };
-
-        if (dialog.ShowDialog() != true) return;
-        await SendImageAsync(dialog.FileName);
+        if (dlg.ShowDialog() != true) return;
+        await SendImageAsync(dlg.FileName);
     }
 
     private async Task SendImageAsync(string filePath)
     {
         try
         {
-            byte[] imageData = await ImageService.CompressImageAsync(filePath);
+            byte[] data = await ImageService.CompressImageAsync(filePath);
             string fileName = Path.GetFileName(filePath);
-            Guid fileId = Guid.NewGuid();
+            string base64 = Convert.ToBase64String(data);
 
-            // Encode image as Base64 and send inline via chat channel
-            string base64Data = Convert.ToBase64String(imageData);
-
-            string metadataPacket = $"{AppConstants.ImageCommand}{AppConstants.MessageSeparator}" +
-                                    $"{_username}{AppConstants.MessageSeparator}" +
-                                    $"{fileId}{AppConstants.MessageSeparator}" +
-                                    $"{fileName}{AppConstants.MessageSeparator}" +
-                                    $"{imageData.Length}{AppConstants.MessageSeparator}" +
-                                    $"{base64Data}";
-            await _networkService.SendRawPacketAsync(metadataPacket);
-
-            // Show thumbnail locally for the sender
-            Application.Current.Dispatcher.Invoke(() =>
+            var message = new ChatMessage
             {
-                var thumbnail = ImageService.CreateThumbnail(imageData);
-                FileTransferInfo info = new()
-                {
-                    FileId = fileId, FileName = fileName, FileSize = imageData.Length,
-                    SenderName = _username, IsImage = true
-                };
-                DisplayMessage msg = new(_username, $"Sent image: {fileName}", _username)
-                {
-                    IsImageMessage = true, FileInfo = info, ImageThumbnail = thumbnail,
-                    TransferStatus = FileTransferStatus.Completed
-                };
-                Messages.Add(msg);
-                _fileMessages[fileId] = msg;
-                MessagesListBox.ScrollIntoView(msg);
-            });
+                SenderName = _username,
+                Content = fileName,
+                GroupName = _currentRoom,
+                Type = MessageType.Image,
+                FileData = base64,
+                FileSize = data.Length
+            };
+
+            var dm = CreateDisplayMessage(message);
+            AddDisplayMessage(dm);
+            _messageById[message.Id] = dm;
+
+            await _hubService.SendMessageAsync(message);
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to send image: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Gửi ảnh thất bại: {ex.Message}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
-    // ── File ──
+    // ══════════════════════════════════════════════════════
+    // Sending: File
+    // ══════════════════════════════════════════════════════
 
     private async void AttachButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!_networkService.IsConnected || !_fileTransferService.IsConnected)
-        {
-            MessageBox.Show("Bạn cần kết nối tới server trước.", "Chưa kết nối", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        OpenFileDialog dialog = new() { Filter = "All files|*.*", Title = "Select a file to send" };
-        if (dialog.ShowDialog() != true) return;
-        await SendFileAsync(dialog.FileName);
+        if (!_hubService.IsConnected) { MessageBox.Show("Chưa kết nối server."); return; }
+        var dlg = new OpenFileDialog { Title = "Chọn file để gửi" };
+        if (dlg.ShowDialog() != true) return;
+        await SendFileAsync(dlg.FileName);
     }
 
     private async Task SendFileAsync(string filePath)
     {
         try
         {
-            FileInfo fi = new(filePath);
-            Guid fileId = Guid.NewGuid();
+            string fileName = Path.GetFileName(filePath);
+            byte[] fileBytes = await File.ReadAllBytesAsync(filePath);
+            long fileSize = fileBytes.Length;
 
-            FileTransferInfo info = new()
+            var message = new ChatMessage
             {
-                FileId = fileId, FileName = fi.Name, FileSize = fi.Length,
-                SenderName = _username, IsImage = false
+                SenderName = _username,
+                Content = fileName,
+                GroupName = _currentRoom,
+                Type = MessageType.File,
+                FileData = Convert.ToBase64String(fileBytes),
+                FileSize = fileSize
             };
-            info.ComputeTotalChunks(AppConstants.ChunkSize);
 
-            string metadataPacket = $"{AppConstants.FileCommand}{AppConstants.MessageSeparator}" +
-                                    $"{_username}{AppConstants.MessageSeparator}" +
-                                    $"{fileId}{AppConstants.MessageSeparator}" +
-                                    $"{fi.Name}{AppConstants.MessageSeparator}" +
-                                    $"{fi.Length}";
-            await _networkService.SendRawPacketAsync(metadataPacket);
+            var dm = CreateDisplayMessage(message);
+            AddDisplayMessage(dm);
+            _messageById[message.Id] = dm;
 
-            Application.Current.Dispatcher.Invoke(() =>
-            {
-                DisplayMessage msg = new(_username, $"Sent file: {fi.Name}", _username)
-                {
-                    IsFileMessage = true, FileInfo = info,
-                    TransferStatus = FileTransferStatus.Transferring, LocalFilePath = filePath
-                };
-                Messages.Add(msg);
-                _fileMessages[fileId] = msg;
-                MessagesListBox.ScrollIntoView(msg);
-            });
-
-            Progress<double> progress = new(p =>
-                Application.Current.Dispatcher.Invoke(() => { if (_fileMessages.TryGetValue(fileId, out var m)) m.TransferProgress = p; }));
-
-            await _fileTransferService.SendFileAsync(filePath, fileId, progress);
-
-            Application.Current.Dispatcher.Invoke(() =>
-                { if (_fileMessages.TryGetValue(fileId, out var m)) m.TransferStatus = FileTransferStatus.Completed; });
-
-            await _networkService.SendRawPacketAsync($"{AppConstants.CompleteCommand}{AppConstants.MessageSeparator}{fileId}");
+            await _hubService.SendMessageAsync(message);
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to send file: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Gửi file thất bại: {ex.Message}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
-    // ── Click handlers for message templates ──
+    // ══════════════════════════════════════════════════════
+    // Message Rendering Helper
+    // ══════════════════════════════════════════════════════
+
+    private DisplayMessage CreateDisplayMessage(ChatMessage msg)
+    {
+        var dm = new DisplayMessage(msg.SenderName, msg.Content, _username)
+        {
+            Id = msg.Id,
+            GroupName = msg.GroupName,
+            Timestamp = msg.Timestamp
+        };
+
+        if (msg.Type == MessageType.Image && !string.IsNullOrEmpty(msg.FileData))
+        {
+            try
+            {
+                byte[] data = Convert.FromBase64String(msg.FileData);
+                var thumbnail = ImageService.CreateThumbnail(data);
+
+                string tempDir = Path.Combine(Path.GetTempPath(), "LAN_Chat_Received");
+                Directory.CreateDirectory(tempDir);
+                string savePath = Path.Combine(tempDir, $"{msg.Id}_{msg.Content}");
+                if (!File.Exists(savePath)) File.WriteAllBytes(savePath, data);
+
+                dm.IsImageMessage = true;
+                dm.FileInfo = new FileTransferInfo { FileId = Guid.Parse(msg.Id), FileName = msg.Content, FileSize = msg.FileSize, SenderName = msg.SenderName, IsImage = true };
+                dm.ImageThumbnail = thumbnail;
+                dm.TransferStatus = FileTransferStatus.Completed;
+                dm.LocalFilePath = savePath;
+                dm.Content = $"Gửi ảnh: {msg.Content}";
+            }
+            catch { /* ignore bad base64 */ }
+        }
+        else if (msg.Type == MessageType.Image && string.IsNullOrEmpty(msg.FileData))
+        {
+            // Cached image — FileData stripped on server.
+            // Try to load thumbnail from local temp if this client already received it.
+            dm.IsImageMessage = true;
+            dm.FileInfo = new FileTransferInfo { FileId = Guid.Parse(msg.Id), FileName = msg.Content, FileSize = msg.FileSize, SenderName = msg.SenderName, IsImage = true };
+            dm.TransferStatus = FileTransferStatus.Completed;
+            dm.Content = $"Gửi ảnh: {msg.Content}";
+
+            string localPath = Path.Combine(Path.GetTempPath(), "LAN_Chat_Received", $"{msg.Id}_{msg.Content}");
+            if (File.Exists(localPath))
+            {
+                try
+                {
+                    byte[] data = File.ReadAllBytes(localPath);
+                    dm.ImageThumbnail = ImageService.CreateThumbnail(data);
+                    dm.LocalFilePath = localPath;
+                }
+                catch { dm.ImageThumbnail = null; }
+            }
+            // else: ImageThumbnail stays null → placeholder shown in XAML
+        }
+        else if (msg.Type == MessageType.File && !string.IsNullOrEmpty(msg.FileData))
+        {
+            try
+            {
+                byte[] data = Convert.FromBase64String(msg.FileData);
+                string tempDir = Path.Combine(Path.GetTempPath(), "LAN_Chat_Received");
+                Directory.CreateDirectory(tempDir);
+                string savePath = Path.Combine(tempDir, $"{msg.Id}_{msg.Content}");
+                if (!File.Exists(savePath)) File.WriteAllBytes(savePath, data);
+
+                dm.IsFileMessage = true;
+                dm.FileInfo = new FileTransferInfo { FileId = Guid.Parse(msg.Id), FileName = msg.Content, FileSize = msg.FileSize, SenderName = msg.SenderName };
+                dm.TransferStatus = FileTransferStatus.Completed;
+                dm.LocalFilePath = savePath;
+                dm.TransferProgress = 100;
+                dm.Content = $"Gửi file: {msg.Content}";
+            }
+            catch { /* ignore bad base64 */ }
+        }
+        else if (msg.Type == MessageType.File && string.IsNullOrEmpty(msg.FileData))
+        {
+            // Cached file — FileData stripped.
+            dm.IsFileMessage = true;
+            dm.FileInfo = new FileTransferInfo { FileId = Guid.Parse(msg.Id), FileName = msg.Content, FileSize = msg.FileSize, SenderName = msg.SenderName };
+            dm.TransferStatus = FileTransferStatus.Completed;
+            dm.Content = $"Gửi file: {msg.Content}";
+
+            // Restore LocalFilePath if file still exists in temp
+            string localPath = Path.Combine(Path.GetTempPath(), "LAN_Chat_Received", $"{msg.Id}_{msg.Content}");
+            if (File.Exists(localPath))
+                dm.LocalFilePath = localPath; // re-enables Lưu button
+        }
+
+        // Restore reactions from cache snapshot (populated by server in GetRoomCache)
+        if (msg.Reactions is { Count: > 0 })
+        {
+            foreach (var (reactionType, count) in msg.Reactions)
+                dm.UpdateReaction(reactionType, count);
+        }
+
+        return dm;
+    }
+
+    // ══════════════════════════════════════════════════════
+    // Receive Handlers (all dispatch to UI thread)
+    // ══════════════════════════════════════════════════════
+
+    private void OnMessageReceived(ChatMessage msg)
+    {
+        // Skip if it's our own optimistic message (already shown)
+        if (string.Equals(msg.SenderName, _username, StringComparison.OrdinalIgnoreCase))
+        {
+            // Update the Id of the optimistic message if needed
+            return;
+        }
+        Dispatcher.Invoke(() =>
+        {
+            var dm = CreateDisplayMessage(msg);
+            AddDisplayMessage(dm);
+            _messageById[msg.Id] = dm;
+        });
+    }
+
+    private void OnSystemMessageReceived(string content, string room)
+    {
+        if (room != _currentRoom) return;
+        Dispatcher.Invoke(() =>
+        {
+            AddDisplayMessage(new DisplayMessage(AppConstants.SystemSenderName, content, _username)
+            { IsSystemMessage = true });
+        });
+    }
+
+    private void OnUserListUpdated(string room, string[] users)
+    {
+        if (room != _currentRoom) return;
+        Dispatcher.Invoke(() =>
+        {
+            OnlineUsers.Clear();
+            foreach (var u in users)
+                OnlineUsers.Add(new OnlineUser(u));
+        });
+    }
+
+    private void OnCachedMessagesReceived(List<ChatMessage> messages)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            Messages.Clear();
+            _messageById.Clear();
+            foreach (var msg in messages)
+            {
+                var dm = CreateDisplayMessage(msg);
+                Messages.Add(dm);
+                _messageById[msg.Id] = dm;
+            }
+            ScrollToBottom();
+        });
+    }
+
+    private void OnTypingStatusReceived(string username, bool isTyping)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            if (isTyping && !_typingUsers.Contains(username))
+                _typingUsers.Add(username);
+            else if (!isTyping)
+                _typingUsers.Remove(username);
+
+            OnPropertyChanged(nameof(HasTypingUsers));
+            OnPropertyChanged(nameof(TypingIndicatorText));
+        });
+    }
+
+    private void OnReactionUpdated(string messageId, string reactionType, int count)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            if (_messageById.TryGetValue(messageId, out var dm))
+                dm.UpdateReaction(reactionType, count);
+        });
+    }
+
+    // ══════════════════════════════════════════════════════
+    // Reconnect handlers
+    // ══════════════════════════════════════════════════════
+
+    private void OnReconnecting(Exception? ex)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            ReconnectBanner.Visibility = Visibility.Visible;
+            ReconnectText.Text = "Đang thử kết nối lại...";
+            InputGrid.IsEnabled = false;
+            InputGrid.Opacity = 0.5;
+            StatusTextBlock.Text = "Đang kết nối lại...";
+            StatusTextBlock.Foreground = System.Windows.Media.Brushes.Orange;
+        });
+    }
+
+    private async void OnReconnected(string? connectionId)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            ReconnectBanner.Visibility = Visibility.Collapsed;
+            InputGrid.IsEnabled = true;
+            InputGrid.Opacity = 1.0;
+            StatusTextBlock.Text = $"Online • {_currentRoom}";
+            StatusTextBlock.Foreground = System.Windows.Media.Brushes.LightGreen;
+        });
+        // Re-join current room to refresh user list + get cache
+        try { await _hubService.SwitchRoomAsync(string.Empty, _currentRoom); }
+        catch { /* ignore */ }
+    }
+
+    private void OnConnectionClosed(Exception? ex)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            ReconnectBanner.Visibility = Visibility.Visible;
+            ReconnectText.Text = ex is null ? "Đã ngắt kết nối." : $"Mất kết nối: {ex.Message}";
+            InputGrid.IsEnabled = false;
+            StatusTextBlock.Text = "Offline";
+            StatusTextBlock.Foreground = System.Windows.Media.Brushes.IndianRed;
+            ConnectButton.IsEnabled = true;
+            ConnectButton.Content = "Kết nối";
+        });
+    }
+
+    // ══════════════════════════════════════════════════════
+    // Emoji
+    // ══════════════════════════════════════════════════════
+
+    private void EmojiToggle_Click(object sender, RoutedEventArgs e)
+        => EmojiPopup.IsOpen = !EmojiPopup.IsOpen;
+
+    private void EmojiButton_Selected(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string emoji)
+        {
+            MessageInputTextBox.Text += emoji;
+            MessageInputTextBox.CaretIndex = MessageInputTextBox.Text.Length;
+            EmojiPopup.IsOpen = false;
+            MessageInputTextBox.Focus();
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    // Typing indicator (debounce)
+    // ══════════════════════════════════════════════════════
+
+    private void MessageInputTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_hubService.IsConnected) return;
+
+        if (!_isTyping)
+        {
+            _isTyping = true;
+            _ = _hubService.SendTypingStatusAsync(_currentRoom, true);
+        }
+
+        _typingTimer?.Dispose();
+        _typingTimer = new System.Threading.Timer(_ =>
+        {
+            _isTyping = false;
+            _ = _hubService.SendTypingStatusAsync(_currentRoom, false);
+            _typingTimer = null;
+        }, null, 2000, System.Threading.Timeout.Infinite);
+    }
+
+    // ══════════════════════════════════════════════════════
+    // Reactions
+    // ══════════════════════════════════════════════════════
+
+    private async void Reaction_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_hubService.IsConnected) return;
+        if (sender is not Button btn) return;
+
+        string reactionType = btn.Tag?.ToString() ?? string.Empty;
+        if (string.IsNullOrEmpty(reactionType)) return;
+
+        // Walk up the LOGICAL tree from the Button to find the parent ContextMenu.
+        // btn.Parent is the StackPanel (IsItemsHost=true), not the ContextMenu itself.
+        DependencyObject? node = btn;
+        ContextMenu? cm = null;
+        while (node is not null)
+        {
+            if (node is ContextMenu found) { cm = found; break; }
+            node = LogicalTreeHelper.GetParent(node);
+        }
+
+        if (cm?.PlacementTarget is not FrameworkElement target) return;
+
+        // PlacementTarget is the Border; its DataContext (inherited) is the DisplayMessage.
+        DependencyObject? el = target;
+        while (el is not null)
+        {
+            if (el is FrameworkElement fe && fe.DataContext is DisplayMessage dm)
+            {
+                try { await _hubService.SendReactionAsync(dm.Id, reactionType); }
+                catch { }
+                cm.IsOpen = false;
+                return;
+            }
+            el = VisualTreeHelper.GetParent(el);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════
+    // Image Viewer Overlay
+    // ══════════════════════════════════════════════════════
 
     private void ImageThumbnail_Click(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not System.Windows.Controls.Image img || img.DataContext is not DisplayMessage message) return;
-        if (message.LocalFilePath != null && File.Exists(message.LocalFilePath))
+        if (sender is not Image img) return;
+
+        // Walk up visual tree to find the DisplayMessage DataContext
+        var element = img as FrameworkElement;
+        while (element is not null)
         {
-            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = message.LocalFilePath, UseShellExecute = true }); }
-            catch { }
+            if (element.DataContext is DisplayMessage dm && dm.LocalFilePath is not null && File.Exists(dm.LocalFilePath))
+            {
+                // Load the full-quality original image from disk
+                try
+                {
+                    var fullImage = new BitmapImage();
+                    fullImage.BeginInit();
+                    fullImage.UriSource = new Uri(dm.LocalFilePath, UriKind.Absolute);
+                    fullImage.CacheOption = BitmapCacheOption.OnLoad;
+                    fullImage.EndInit();
+                    fullImage.Freeze();
+
+                    ViewerImage.Source = fullImage;
+                    ImageViewerOverlay.Visibility = Visibility.Visible;
+                }
+                catch
+                {
+                    // Fallback to thumbnail if file not accessible
+                    ViewerImage.Source = img.Source;
+                    ImageViewerOverlay.Visibility = Visibility.Visible;
+                }
+                return;
+            }
+            element = VisualTreeHelper.GetParent(element) as FrameworkElement;
         }
     }
 
     private void SaveFileButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { Tag: DisplayMessage message }) return;
-        if (message.LocalFilePath == null || !File.Exists(message.LocalFilePath)) return;
+        if (sender is not Button btn || btn.Tag is not DisplayMessage dm) return;
+        if (dm.LocalFilePath is null || !File.Exists(dm.LocalFilePath)) return;
 
-        SaveFileDialog dialog = new() { FileName = message.FileInfo?.FileName ?? "file", Title = "Save file as" };
-        if (dialog.ShowDialog() != true) return;
-
-        try
+        var dlg = new SaveFileDialog
         {
-            File.Copy(message.LocalFilePath, dialog.FileName, overwrite: true);
-            MessageBox.Show($"File saved to: {dialog.FileName}", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Failed to save file: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
+            FileName = dm.FileInfo?.FileName ?? "file",
+            Title = "Lưu file"
+        };
+        if (dlg.ShowDialog() == true)
+            File.Copy(dm.LocalFilePath, dlg.FileName, overwrite: true);
     }
 
-    // ── Incoming message handling ──
-
-    private void OnMessageReceived(object? sender, string packet)
+    private void CloseImageViewer_Click(object sender, RoutedEventArgs e)
     {
-        if (!TryParsePacket(packet, out string senderName, out string content)) return;
+        ImageViewerOverlay.Visibility = Visibility.Collapsed;
+        ViewerImage.Source = null;
+    }
 
-        Application.Current.Dispatcher.Invoke(() =>
+    private DisplayMessage AddDisplayMessage(DisplayMessage dm)
+    {
+        Dispatcher.Invoke(() =>
         {
-            if (senderName == AppConstants.UserListCommand) HandleUserList(content);
-            else if (senderName == AppConstants.ImageCommand) HandleImageMetadata(content);
-            else if (senderName == AppConstants.FileCommand) HandleFileMetadata(content);
-            else if (senderName == AppConstants.ProgressCommand) HandleProgress(content);
-            else if (senderName == AppConstants.CompleteCommand) HandleComplete(content);
-            else
-            {
-                DisplayMessage displayMessage = new(senderName, content, _username);
-                Messages.Add(displayMessage);
-                MessagesListBox.ScrollIntoView(displayMessage);
-            }
+            Messages.Add(dm);
+            ScrollToBottom();
         });
+        return dm;
     }
 
-    private void HandleUserList(string content)
+    private void ScrollToBottom()
     {
-        OnlineUsers.Clear();
-        if (string.IsNullOrWhiteSpace(content)) { OnlineCountText.Text = "0 users"; return; }
-
-        string[] users = content.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        foreach (string user in users)
-        {
-            OnlineUsers.Add(new OnlineUser(user));
-        }
-        OnlineCountText.Text = $"{users.Length} user{(users.Length != 1 ? "s" : "")}";
-    }
-
-    private void HandleImageMetadata(string content)
-    {
-        string[] parts = content.Split(AppConstants.MessageSeparator);
-        if (parts.Length < 5) return;
-
-        string senderName = parts[0];
-        if (!Guid.TryParse(parts[1], out Guid fileId)) return;
-        string fileName = parts[2];
-        if (!long.TryParse(parts[3], out long fileSize)) return;
-        string base64Data = parts[4];
-
-        // Skip if own message (already displayed locally)
-        if (string.Equals(senderName, _username, StringComparison.OrdinalIgnoreCase) && _fileMessages.ContainsKey(fileId))
-            return;
-
-        // Decode Base64 image data and create thumbnail
-        try
-        {
-            byte[] imageData = Convert.FromBase64String(base64Data);
-            var thumbnail = ImageService.CreateThumbnail(imageData);
-
-            // Save to temp for "Open" functionality
-            string tempDir = Path.Combine(Path.GetTempPath(), "LAN_Chat_Received");
-            Directory.CreateDirectory(tempDir);
-            string savePath = Path.Combine(tempDir, $"{fileId}_{fileName}");
-            File.WriteAllBytes(savePath, imageData);
-
-            FileTransferInfo info = new()
-            {
-                FileId = fileId, FileName = fileName, FileSize = fileSize,
-                SenderName = senderName, IsImage = true
-            };
-
-            DisplayMessage msg = new(senderName, $"Sent image: {fileName}", _username)
-            {
-                IsImageMessage = true, FileInfo = info, ImageThumbnail = thumbnail,
-                TransferStatus = FileTransferStatus.Completed, LocalFilePath = savePath
-            };
-            Messages.Add(msg);
-            _fileMessages[fileId] = msg;
-            MessagesListBox.ScrollIntoView(msg);
-        }
-        catch { /* Invalid Base64 data */ }
-    }
-
-    private void HandleFileMetadata(string content)
-    {
-        string[] parts = content.Split(AppConstants.MessageSeparator);
-        if (parts.Length < 4) return;
-
-        string senderName = parts[0];
-        if (!Guid.TryParse(parts[1], out Guid fileId)) return;
-        string fileName = parts[2];
-        if (!long.TryParse(parts[3], out long fileSize)) return;
-
-        // Skip if own message (sender already shows progress locally)
-        if (string.Equals(senderName, _username, StringComparison.OrdinalIgnoreCase) && _fileMessages.ContainsKey(fileId))
-            return;
-
-        // For receivers: DON'T show the file message yet — save metadata and wait for [COMPLETE]
-        _pendingFileMetadata[fileId] = (senderName, fileName, fileSize);
-
-        // Register to receive the binary data in background
-        string tempDir = Path.Combine(Path.GetTempPath(), "LAN_Chat_Received");
-        Directory.CreateDirectory(tempDir);
-        _fileTransferService.RegisterFileReceive(fileId, Path.Combine(tempDir, $"{fileId}_{fileName}"), fileSize);
-    }
-
-    private void HandleProgress(string content)
-    {
-        string[] parts = content.Split(AppConstants.MessageSeparator);
-        if (parts.Length < 2) return;
-        if (Guid.TryParse(parts[0], out Guid fileId) && double.TryParse(parts[1], out double percent))
-            if (_fileMessages.TryGetValue(fileId, out var msg)) msg.TransferProgress = percent;
-    }
-
-    private void HandleComplete(string content)
-    {
-        if (!Guid.TryParse(content.Trim(), out Guid fileId)) return;
-
-        // If sender's own message — just update status
-        if (_fileMessages.TryGetValue(fileId, out var msg))
-        {
-            msg.TransferStatus = FileTransferStatus.Completed;
-            return;
-        }
-
-        // For receiver: now create the DisplayMessage from pending metadata
-        if (_pendingFileMetadata.TryGetValue(fileId, out var meta))
-        {
-            _pendingFileMetadata.Remove(fileId);
-
-            string tempDir = Path.Combine(Path.GetTempPath(), "LAN_Chat_Received");
-            string savePath = Path.Combine(tempDir, $"{fileId}_{meta.FileName}");
-
-            FileTransferInfo info = new()
-            {
-                FileId = fileId, FileName = meta.FileName, FileSize = meta.FileSize,
-                SenderName = meta.SenderName, IsImage = false
-            };
-
-            DisplayMessage fileMsg = new(meta.SenderName, $"Sent file: {meta.FileName}", _username)
-            {
-                IsFileMessage = true, FileInfo = info,
-                TransferStatus = FileTransferStatus.Completed,
-                LocalFilePath = File.Exists(savePath) ? savePath : null
-            };
-            Messages.Add(fileMsg);
-            _fileMessages[fileId] = fileMsg;
-            MessagesListBox.ScrollIntoView(fileMsg);
-        }
-    }
-
-    // ── File transfer events ──
-
-    private void OnFileProgress(object? sender, FileProgressEventArgs e)
-    {
-        Application.Current.Dispatcher.Invoke(() =>
-        {
-            if (_fileMessages.TryGetValue(e.FileId, out var msg))
-            { msg.TransferProgress = e.Progress; msg.TransferStatus = FileTransferStatus.Transferring; }
-        });
-    }
-
-    private void OnFileCompleted(object? sender, FileCompletedEventArgs e)
-    {
-        Application.Current.Dispatcher.Invoke(() =>
-        {
-            if (_fileMessages.TryGetValue(e.FileId, out var msg))
-            {
-                msg.TransferStatus = FileTransferStatus.Completed;
-                msg.TransferProgress = 100;
-                msg.LocalFilePath = e.FilePath;
-
-                if (msg.IsImageMessage && File.Exists(e.FilePath))
-                {
-                    try { msg.ImageThumbnail = ImageService.CreateThumbnail(File.ReadAllBytes(e.FilePath)); }
-                    catch { }
-                }
-            }
-        });
-    }
-
-    // ── Utilities ──
-
-    private static bool TryParsePacket(string packet, out string senderName, out string content)
-    {
-        senderName = string.Empty;
-        content = string.Empty;
-        if (string.IsNullOrWhiteSpace(packet)) return false;
-
-        string[] parts = packet.Split(AppConstants.MessageSeparator, 2, StringSplitOptions.None);
-        if (parts.Length != 2) return false;
-
-        senderName = parts[0];
-        content = parts[1];
-        return true;
-    }
-
-    protected override async void OnClosed(EventArgs e)
-    {
-        _networkService.MessageReceived -= OnMessageReceived;
-        _fileTransferService.FileProgressReceived -= OnFileProgress;
-        _fileTransferService.FileCompleted -= OnFileCompleted;
-        await _fileTransferService.DisposeAsync();
-        await _networkService.DisposeAsync();
-        base.OnClosed(e);
+        if (MessagesListBox.Items.Count > 0)
+            MessagesListBox.ScrollIntoView(MessagesListBox.Items[^1]);
     }
 }
 
-/// <summary>Simple model for the online users sidebar.</summary>
-public class OnlineUser
-{
-    public OnlineUser(string name)
-    {
-        Name = name;
-        Initial = string.IsNullOrEmpty(name) ? "?" : name[..1].ToUpper();
-    }
+// ── Supporting models ──
 
-    public string Name { get; }
-    public string Initial { get; }
+public record OnlineUser(string Name)
+{
+    public string Initial => Name.Length > 0 ? Name[0].ToString().ToUpper() : "?";
 }
